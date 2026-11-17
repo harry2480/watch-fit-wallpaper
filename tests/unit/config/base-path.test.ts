@@ -7,6 +7,8 @@ describe('resolveBasePath', () => {
 		expect(resolveBasePath('')).toBe('/');
 		expect(resolveBasePath('  ')).toBe('/');
 		expect(resolveBasePath('/')).toBe('/');
+		expect(resolveBasePath('//')).toBe('/');
+		expect(resolveBasePath(' /// ')).toBe('/');
 	});
 
 	it('先頭と末尾のスラッシュを補う', () => {
