@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+// zod は高速化のために new Function を試し、厳格な CSP（unsafe-eval なし）では違反を記録する。
+// CSP 下で違反を出さないよう、スキーマの評価より前に JIT を無効にする（要件定義 14.5）
+z.config({ jitless: true });
+
 const httpsUrl = z.url({ protocol: /^https$/, hostname: z.regexes.domain });
 
 const baseWatchModelSchema = z.strictObject({

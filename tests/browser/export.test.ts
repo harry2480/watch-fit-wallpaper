@@ -4,7 +4,13 @@ import { centeredTransform } from '@/features/editor/geometry';
 import { renderImage } from '@/features/editor/renderer';
 import { generateExportBlob } from '@/features/export/generate';
 import { decodeImageFile } from '@/features/image/decode';
-import { buildExifSegment, EXIF_DATETIME, EXIF_MAKE, includesAscii, insertExif } from './exif';
+import {
+	buildExifSegment,
+	EXIF_DATETIME,
+	EXIF_MAKE,
+	includesAscii,
+	insertExif,
+} from '../fixtures/exif';
 
 /** EXIF 付きの JPEG を読み込んだ想定の画像（Canvas で作るので EXIF は無い）。4 象限の色で構図を確かめる */
 function quadrant(width: number, height: number): HTMLCanvasElement {
