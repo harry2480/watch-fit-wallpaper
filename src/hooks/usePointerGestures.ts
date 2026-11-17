@@ -64,10 +64,11 @@ type SafariGestureEvent = Event & { scale: number; clientX: number; clientY: num
 export function usePointerGestures(
 	elementRef: RefObject<HTMLElement | null>,
 	options: PointerGestureOptions,
-): { cancel: () => void } {
+): { cancel: () => void; flush: () => void } {
 	const optionsRef = useRef(options);
 	optionsRef.current = options;
 	const cancelRef = useRef<() => void>(() => {});
+	const flushRef = useRef<() => void>(() => {});
 
 	useEffect(() => {
 		const element = elementRef.current;
@@ -117,6 +118,8 @@ export function usePointerGestures(
 		};
 
 		cancelRef.current = reset;
+		// 確定待ちのホイール操作をすぐに確定する（保存の直前などに使う）
+		flushRef.current = flushWheel;
 
 		/** 指の本数が変わったら、現在の表示状態を起点に操作を組み立て直す */
 		const restart = (ctx: GestureContext) => {
@@ -315,9 +318,11 @@ export function usePointerGestures(
 			// アンマウント時は確定せずに破棄する
 			reset();
 			cancelRef.current = () => {};
+			flushRef.current = () => {};
 		};
 	}, [elementRef]);
 
 	const cancel = useCallback(() => cancelRef.current(), []);
-	return { cancel };
+	const flush = useCallback(() => flushRef.current(), []);
+	return { cancel, flush };
 }

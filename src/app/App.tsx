@@ -1,10 +1,10 @@
 import { AlertCircle, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BackgroundPicker } from '@/components/editor/BackgroundPicker';
 import { EditorToolbar } from '@/components/editor/EditorToolbar';
 import { FitModeSelector } from '@/components/editor/FitModeSelector';
 import { ImageUploader } from '@/components/editor/ImageUploader';
-import { WatchPreview } from '@/components/editor/WatchPreview';
+import { WatchPreview, type WatchPreviewHandle } from '@/components/editor/WatchPreview';
 import { ZoomSlider } from '@/components/editor/ZoomSlider';
 import { ExportPanel } from '@/components/export/ExportPanel';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ export function App() {
 	const frameOutput = editor.previewOutput ?? editor.output ?? FALLBACK_OUTPUT;
 	const hasImage = decoded !== null && state.image !== null;
 	const { loadFile } = editor;
+	const previewRef = useRef<WatchPreviewHandle>(null);
 	// 編集操作は、画像があり出力サイズが有効なときだけ行える（10.3）
 	const editable = hasImage && editor.canExport;
 	const zoomRange = getZoomRange(state, models);
@@ -86,6 +87,7 @@ export function App() {
 								cornerRadiusRatio={model?.cornerRadiusRatio ?? GENERIC_CORNER_RADIUS_RATIO}
 							>
 								<WatchPreview
+									ref={previewRef}
 									source={decoded.source}
 									sourceSize={decoded}
 									output={frameOutput}
@@ -171,6 +173,14 @@ export function App() {
 
 					<ExportPanel
 						disabled={!editable}
+						editVersion={JSON.stringify([
+							decoded?.width,
+							decoded?.height,
+							state.transform,
+							editor.output,
+							state.background.color,
+							state.exportOptions,
+						])}
 						fileId={
 							state.modelId === CUSTOM_MODEL_ID && editor.output
 								? `custom-${editor.output.width}x${editor.output.height}`
@@ -187,7 +197,8 @@ export function App() {
 										source: decoded.source,
 										sourceSize: state.image,
 										output: editor.output,
-										transform: state.transform,
+										// 確定前の操作も含めて、表示中の構図で出力する（9.4）
+										transform: previewRef.current?.getDisplayedTransform() ?? state.transform,
 										backgroundColor: state.background.color,
 										format: state.exportOptions.format,
 										quality: state.exportOptions.quality,

@@ -27,7 +27,7 @@ function deps(overrides: Partial<ExportDependencies> = {}): ExportDependencies {
 
 function setup(d: ExportDependencies, getSnapshot = () => snapshot as ExportSnapshot | null) {
 	const onFormatChange = vi.fn();
-	render(
+	const element = (editVersion: string) => (
 		<ExportPanel
 			getSnapshot={getSnapshot}
 			fileId="series11-46mm"
@@ -35,10 +35,12 @@ function setup(d: ExportDependencies, getSnapshot = () => snapshot as ExportSnap
 			quality={0.92}
 			onFormatChange={onFormatChange}
 			disabled={false}
+			editVersion={editVersion}
 			deps={d}
-		/>,
+		/>
 	);
-	return { onFormatChange };
+	const utils = render(element('v1'));
+	return { onFormatChange, setVersion: (v: string) => utils.rerender(element(v)) };
 }
 
 describe('ExportPanel', () => {
@@ -52,12 +54,17 @@ describe('ExportPanel', () => {
 		setup(d);
 		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
 		expect(
-			await screen.findByText('watchfit-series11-46mm-20261117-203000.png を保存しました。'),
+			await screen.findByText(
+				/watchfit-series11-46mm-20261117-203000\.png のダウンロードを開始しました/,
+			),
 		).toBeInTheDocument();
 		expect(d.download).toHaveBeenCalledWith(
 			expect.any(Blob),
 			'watchfit-series11-46mm-20261117-203000.png',
+			'blob:generated',
 		);
+		// ダウンロードが効かない環境向けに、手動で保存する方法を開いて示す
+		expect(screen.getByText('保存できない場合').closest('details')).toHaveAttribute('open');
 		expect(d.share).not.toHaveBeenCalled();
 	});
 
@@ -108,7 +115,7 @@ describe('ExportPanel', () => {
 		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('メモリが不足して');
 		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
-		expect(await screen.findByText(/を保存しました/)).toBeInTheDocument();
+		expect(await screen.findByText(/ダウンロードを開始しました/)).toBeInTheDocument();
 	});
 
 	it('共有に失敗したらエラーを出し、画像を表示して手動で保存できるようにする', async () => {
@@ -127,6 +134,72 @@ describe('ExportPanel', () => {
 		);
 	});
 
+	it('共有中はもう一度押しても共有を重ねない', async () => {
+		let resolveShare!: (value: 'shared') => void;
+		const share = vi
+			.fn()
+			.mockResolvedValueOnce('needs-user-activation')
+			.mockImplementationOnce(() => new Promise((resolve) => (resolveShare = resolve)));
+		const d = deps({ canShare: () => true, share });
+		setup(d);
+		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+		const shareButton = await screen.findByRole('button', { name: '共有して保存' });
+		fireEvent.click(shareButton);
+		fireEvent.click(screen.getByRole('button', { name: /画像を作成しています|画像を保存/ }));
+		expect(share).toHaveBeenCalledTimes(2);
+		expect(d.generate).toHaveBeenCalledTimes(1);
+		resolveShare('shared');
+		expect(await screen.findByText('共有シートから保存しました。')).toBeInTheDocument();
+	});
+
+	it('2 回目も権限が切れていたら、もう一度共有ボタンを出す', async () => {
+		const share = vi.fn().mockResolvedValue('needs-user-activation');
+		setup(deps({ canShare: () => true, share }));
+		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+		fireEvent.click(await screen.findByRole('button', { name: '共有して保存' }));
+		expect(await screen.findByRole('button', { name: '共有して保存' })).toBeEnabled();
+		expect(share).toHaveBeenCalledTimes(2);
+	});
+
+	it('ダウンロードに失敗したら日本語のエラーを出し、画像を表示する', async () => {
+		const d = deps({
+			download: vi.fn(() => {
+				throw new Error('x');
+			}),
+		});
+		setup(d);
+		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('画像を保存できませんでした');
+		expect(screen.getByRole('img', { name: '保存用に作成した画像' })).toBeInTheDocument();
+	});
+
+	it('編集内容が変わったら、古い生成画像と共有ボタンを破棄する', async () => {
+		const share = vi.fn().mockResolvedValue('needs-user-activation');
+		const { setVersion } = setup(deps({ canShare: () => true, share }));
+		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+		await screen.findByRole('button', { name: '共有して保存' });
+		setVersion('v2');
+		expect(screen.queryByRole('button', { name: '共有して保存' })).not.toBeInTheDocument();
+		expect(screen.queryByText('保存できない場合')).not.toBeInTheDocument();
+		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:generated');
+	});
+
+	it('作成中は「画像を保存」にフォーカスを残したまま二重実行を防ぐ', async () => {
+		let resolveGenerate!: (blob: Blob) => void;
+		const generate = vi.fn(() => new Promise<Blob>((resolve) => (resolveGenerate = resolve)));
+		setup(deps({ generate }));
+		const button = screen.getByRole('button', { name: '画像を保存' });
+		button.focus();
+		fireEvent.click(button);
+		const working = await screen.findByRole('button', { name: '画像を作成しています…' });
+		expect(working).toHaveAttribute('aria-disabled', 'true');
+		expect(working).toHaveFocus();
+		fireEvent.click(working);
+		expect(generate).toHaveBeenCalledTimes(1);
+		resolveGenerate(new Blob(['x']));
+		expect(await screen.findByText(/ダウンロードを開始しました/)).toBeInTheDocument();
+	});
+
 	it('JPEG を選ぶと品質を 50〜100% で指定できる', () => {
 		const onFormatChange = vi.fn();
 		render(
@@ -137,6 +210,7 @@ describe('ExportPanel', () => {
 				quality={0.92}
 				onFormatChange={onFormatChange}
 				disabled={false}
+				editVersion="v1"
 				deps={deps()}
 			/>,
 		);

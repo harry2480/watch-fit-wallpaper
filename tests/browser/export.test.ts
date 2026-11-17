@@ -3,6 +3,8 @@ import { panTransform } from '@/features/editor/constraints';
 import { centeredTransform } from '@/features/editor/geometry';
 import { renderImage } from '@/features/editor/renderer';
 import { generateExportBlob } from '@/features/export/generate';
+import { decodeImageFile } from '@/features/image/decode';
+import { buildExifSegment, EXIF_DATETIME, EXIF_MAKE, includesAscii, insertExif } from './exif';
 
 /** EXIF 付きの JPEG を読み込んだ想定の画像（Canvas で作るので EXIF は無い）。4 象限の色で構図を確かめる */
 function quadrant(width: number, height: number): HTMLCanvasElement {
@@ -15,14 +17,6 @@ function quadrant(width: number, height: number): HTMLCanvasElement {
 		ctx.fillRect((i % 2) * (width / 2), Math.floor(i / 2) * (height / 2), width / 2, height / 2);
 	});
 	return canvas;
-}
-
-function includesAscii(bytes: Uint8Array, text: string): boolean {
-	const pattern = [...text].map((c) => c.charCodeAt(0));
-	for (let i = 0; i + pattern.length <= bytes.length; i += 1) {
-		if (pattern.every((b, j) => bytes[i + j] === b)) return true;
-	}
-	return false;
 }
 
 const image = quadrant(1200, 800);
@@ -47,21 +41,43 @@ describe('generateExportBlob（実ブラウザ）', () => {
 	});
 
 	it.each(['png', 'jpeg'] as const)(
-		'%s に EXIF・位置情報などのメタデータを含めない',
+		'EXIF（位置情報・機器名・撮影日時）付きの JPEG から作った %s に、メタデータと元のファイル名を含めない',
 		async (format) => {
+			const plain = await new Promise<Blob>((resolve) =>
+				image.toBlob((blob) => resolve(blob as Blob), 'image/jpeg', 0.9),
+			);
+			const withExif = insertExif(new Uint8Array(await plain.arrayBuffer()), buildExifSegment());
+			// 入力側に実際にメタデータが入っていることを先に確かめる
+			expect(includesAscii(withExif, 'Exif')).toBe(true);
+			expect(includesAscii(withExif, EXIF_MAKE)).toBe(true);
+			expect(includesAscii(withExif, EXIF_DATETIME)).toBe(true);
+
+			const file = new File([new Uint8Array(withExif)], 'secret-original-name.jpg', {
+				type: 'image/jpeg',
+			});
+			const decoded = await decodeImageFile(file);
 			const blob = await generateExportBlob({
-				source: image,
-				sourceSize: imageSize,
+				source: decoded.source,
+				sourceSize: decoded,
 				output,
-				transform: centeredTransform('cover', imageSize, output),
+				transform: centeredTransform('cover', decoded, output),
 				backgroundColor: '#000000',
 				format,
 				quality: 0.92,
 			});
+			decoded.release();
 			const bytes = new Uint8Array(await blob.arrayBuffer());
-			expect(includesAscii(bytes, 'Exif')).toBe(false);
-			expect(includesAscii(bytes, 'eXIf')).toBe(false);
-			expect(includesAscii(bytes, 'GPS')).toBe(false);
+			for (const text of [
+				'Exif',
+				'eXIf',
+				'tEXt',
+				'iTXt',
+				EXIF_MAKE,
+				EXIF_DATETIME,
+				'secret-original-name',
+			]) {
+				expect(includesAscii(bytes, text), text).toBe(false);
+			}
 		},
 	);
 

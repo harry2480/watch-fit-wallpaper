@@ -35,5 +35,5 @@ test('PC では PNG・JPEG をモデルの解像度でダウンロードでき�
 	expect(jpeg.suggestedFilename()).toMatch(/\.jpg$/);
 	const jpegBytes = await readFile(await jpeg.path());
 	expect([jpegBytes[0], jpegBytes[1]]).toEqual([0xff, 0xd8]);
-	await expect(page.getByText(/を保存しました/)).toBeVisible();
+	await expect(page.getByText(/ダウンロードを開始しました/)).toBeVisible();
 });

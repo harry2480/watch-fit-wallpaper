@@ -85,11 +85,25 @@ describe('downloadBlob', () => {
 		expect(click).toHaveBeenCalledTimes(1);
 		expect(document.querySelector('a[download]')).toBeNull();
 		expect(revoke).not.toHaveBeenCalled();
-		vi.advanceTimersByTime(10_000);
+		vi.advanceTimersByTime(60_000);
 		expect(revoke).toHaveBeenCalledWith('blob:x');
 		create.mockRestore();
 		revoke.mockRestore();
 		click.mockRestore();
+	});
+});
+
+describe('downloadBlob（URL を渡した場合）', () => {
+	it('渡された URL を使い、解放は呼び出し側に任せる', () => {
+		vi.useFakeTimers();
+		const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+		downloadBlob(new Blob(['x']), 'a.png', 'blob:given');
+		vi.advanceTimersByTime(120_000);
+		expect(revoke).not.toHaveBeenCalled();
+		revoke.mockRestore();
+		click.mockRestore();
+		vi.useRealTimers();
 	});
 });
 
@@ -164,7 +178,26 @@ describe('generateExportBlob', () => {
 		const canvas = { width: 0, height: 0, getContext: () => null };
 		await expect(
 			generateExportBlob(snapshot, () => canvas as unknown as HTMLCanvasElement),
-		).rejects.toBeInstanceOf(ExportError);
+		).rejects.toMatchObject({ code: 'canvas-failed' });
+	});
+
+	it('描画中のメモリ不足（RangeError）は out-of-memory', async () => {
+		const canvas = {
+			width: 0,
+			height: 0,
+			getContext: () => ({
+				canvas,
+				setTransform: () => {
+					throw new RangeError('x');
+				},
+			}),
+		};
+		const error = await generateExportBlob(
+			snapshot,
+			() => canvas as unknown as HTMLCanvasElement,
+		).catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(ExportError);
+		expect(error).toMatchObject({ code: 'out-of-memory' });
 	});
 
 	it('エラーメッセージは日本語', () => {
