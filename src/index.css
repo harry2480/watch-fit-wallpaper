@@ -24,7 +24,8 @@
 	--destructive: oklch(0.577 0.245 27.325);
 	--border: oklch(0.922 0 0);
 	--input: oklch(0.922 0 0);
-	--ring: oklch(0.708 0 0);
+	/* フォーカスリングは背景に対して 3:1 以上（WCAG 1.4.11） */
+	--ring: oklch(0.55 0 0);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,7 +47,7 @@
 		--destructive: oklch(0.704 0.191 22.216);
 		--border: oklch(1 0 0 / 10%);
 		--input: oklch(1 0 0 / 15%);
-		--ring: oklch(0.556 0 0);
+		--ring: oklch(0.72 0 0);
 	}
 }
 

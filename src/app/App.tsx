@@ -1,4 +1,5 @@
 import { AlertCircle, X } from 'lucide-react';
+import { useEffect } from 'react';
 import { ImageUploader } from '@/components/editor/ImageUploader';
 import { WatchPreview } from '@/components/editor/WatchPreview';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,29 @@ export function App() {
 	const model = findWatchModel(models, state.modelId);
 	const frameOutput = editor.previewOutput ?? editor.output ?? FALLBACK_OUTPUT;
 	const hasImage = decoded !== null && state.image !== null;
+	const { loadFile } = editor;
+
+	// ページのどこにファイルを落としても、ブラウザがファイルを開いて編集内容を失わないようにし、
+	// 画像として読み込む（ドロップ領域が処理済みのものは除く）
+	useEffect(() => {
+		const hasFiles = (event: DragEvent) =>
+			Array.from(event.dataTransfer?.types ?? []).includes('Files');
+		const onDragOver = (event: DragEvent) => {
+			if (hasFiles(event)) event.preventDefault();
+		};
+		const onDrop = (event: DragEvent) => {
+			if (!hasFiles(event) || event.defaultPrevented) return;
+			event.preventDefault();
+			const file = event.dataTransfer?.files[0];
+			if (file) void loadFile(file);
+		};
+		window.addEventListener('dragover', onDragOver);
+		window.addEventListener('drop', onDrop);
+		return () => {
+			window.removeEventListener('dragover', onDragOver);
+			window.removeEventListener('drop', onDrop);
+		};
+	}, [loadFile]);
 
 	return (
 		<div className="min-h-dvh bg-background text-foreground">

@@ -22,7 +22,6 @@ export function useImageEditor(createLoader: () => ImageLoader = createLatestIma
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const loaderRef = useRef<ImageLoader | null>(null);
-	const decodedRef = useRef<DecodedImage | null>(null);
 
 	if (loaderRef.current === null) {
 		loaderRef.current = createLoader();
@@ -30,18 +29,22 @@ export function useImageEditor(createLoader: () => ImageLoader = createLatestIma
 
 	useEffect(() => {
 		const loader = loaderRef.current;
-		return () => {
-			// 画面の破棄時は進行中の読み込みを捨て、画像リソースを解放する（5.7）
-			loader?.cancel();
-			decodedRef.current?.release();
-			decodedRef.current = null;
-		};
+		// 画面の破棄時は進行中の読み込みを捨てる
+		return () => loader?.cancel();
 	}, []);
+
+	// 古い画像は、新しい画像が画面に反映された後（またはアンマウント時）に解放する（5.7）。
+	// 反映前に解放すると、予約済みの描画が閉じた画像を使ってしまう
+	useEffect(() => {
+		if (!decoded) return;
+		return () => decoded.release();
+	}, [decoded]);
 
 	const loadFile = useCallback(async (file: File | null | undefined) => {
 		const loader = loaderRef.current;
 		if (!loader) return;
 		setLoading(true);
+		setError(null);
 		const result = await loader.load(file);
 		if (result.status === 'stale') {
 			return;
@@ -52,8 +55,6 @@ export function useImageEditor(createLoader: () => ImageLoader = createLatestIma
 			setError(result.error.message);
 			return;
 		}
-		decodedRef.current?.release();
-		decodedRef.current = result.image;
 		setDecoded(result.image);
 		setError(null);
 		dispatch({

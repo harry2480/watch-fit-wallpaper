@@ -98,9 +98,58 @@ describe('App', () => {
 		const width = screen.getByLabelText('幅（px）');
 		fireEvent.change(width, { target: { value: '50' } });
 		expect(width).toHaveAttribute('aria-invalid', 'true');
-		expect(width).toHaveAccessibleDescription('幅は100〜2048pxの範囲で入力してください');
+		expect(width).toHaveAccessibleDescription(/幅は100〜2048pxの範囲で入力してください/);
+		expect(width).toHaveAccessibleDescription(/整数で指定します/);
 		fireEvent.change(width, { target: { value: '５００' } });
 		expect(width).not.toHaveAttribute('aria-invalid');
+	});
+
+	it('読み込み中は状態を表示してボタンを無効にし、連続で選んでも最新の結果で終わる', async () => {
+		let resolveFirst!: (value: unknown) => void;
+		load
+			.mockImplementationOnce(() => new Promise((resolve) => (resolveFirst = resolve)))
+			.mockResolvedValueOnce(loaded(640, 480));
+		render(<App />);
+		selectFile('a.jpg');
+		expect(await screen.findByRole('status')).toHaveTextContent('画像を読み込んでいます');
+		expect(screen.getByRole('button', { name: '画像を選ぶ' })).toBeDisabled();
+		selectFile('b.jpg');
+		await screen.findByRole('img', { name: /表示プレビュー/ });
+		resolveFirst({ status: 'stale' });
+		await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+	});
+
+	it('最初の画像を読み込むと「別の画像を選ぶ」ボタンにフォーカスを移す', async () => {
+		load.mockResolvedValue(loaded());
+		render(<App />);
+		selectFile();
+		const button = await screen.findByRole('button', { name: '別の画像を選ぶ' });
+		expect(button).toHaveFocus();
+	});
+
+	it('画面を閉じると読み込みを取り消し、画像リソースを解放する', async () => {
+		const image = loaded();
+		load.mockResolvedValue(image);
+		const { unmount } = render(<App />);
+		selectFile();
+		await screen.findByRole('img', { name: /表示プレビュー/ });
+		unmount();
+		expect(cancel).toHaveBeenCalled();
+		expect(image.image.release).toHaveBeenCalled();
+	});
+
+	it('編集中にページのどこへドロップしても、ブラウザで開かずに画像として読み込む', async () => {
+		load.mockResolvedValue(loaded());
+		render(<App />);
+		selectFile();
+		await screen.findByRole('img', { name: /表示プレビュー/ });
+		const file = new File(['x'], 'next.png', { type: 'image/png' });
+		const event = Object.assign(new Event('drop', { bubbles: true, cancelable: true }), {
+			dataTransfer: { types: ['Files'], files: [file] },
+		});
+		window.dispatchEvent(event);
+		expect(event.defaultPrevented).toBe(true);
+		await waitFor(() => expect(load).toHaveBeenLastCalledWith(file));
 	});
 
 	it('ドラッグ＆ドロップで画像を読み込める', async () => {

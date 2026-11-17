@@ -1,5 +1,5 @@
 import { ImagePlus, Upload } from 'lucide-react';
-import { type DragEvent, useId, useRef, useState } from 'react';
+import { type DragEvent, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -18,7 +18,15 @@ export const SUPPORTED_FORMATS_TEXT =
  */
 export function ImageUploader({ onSelect, hasImage, loading }: ImageUploaderProps) {
 	const inputRef = useRef<HTMLInputElement>(null);
+	const changeButtonRef = useRef<HTMLButtonElement>(null);
 	const [dragging, setDragging] = useState(false);
+
+	// 最初の画像を読み込むと「画像を選ぶ」ボタンが消えるため、置き換わったボタンへフォーカスを移す
+	useEffect(() => {
+		if (hasImage) {
+			changeButtonRef.current?.focus();
+		}
+	}, [hasImage]);
 	const hintId = useId();
 
 	const openDialog = () => inputRef.current?.click();
@@ -57,7 +65,13 @@ export function ImageUploader({ onSelect, hasImage, loading }: ImageUploaderProp
 	if (hasImage) {
 		return (
 			<div className="flex flex-col gap-1.5">
-				<Button variant="outline" onClick={openDialog} disabled={loading} aria-describedby={hintId}>
+				<Button
+					ref={changeButtonRef}
+					variant="outline"
+					onClick={openDialog}
+					disabled={loading}
+					aria-describedby={hintId}
+				>
 					<ImagePlus aria-hidden="true" />
 					別の画像を選ぶ
 				</Button>
@@ -80,7 +94,12 @@ export function ImageUploader({ onSelect, hasImage, loading }: ImageUploaderProp
 				event.preventDefault();
 				setDragging(true);
 			}}
-			onDragLeave={() => setDragging(false)}
+			onDragLeave={(event) => {
+				// 子要素の上に移動しただけなら強調表示を消さない
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+					setDragging(false);
+				}
+			}}
 			onDrop={onDrop}
 			data-testid="drop-zone"
 		>

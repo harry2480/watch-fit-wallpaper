@@ -47,6 +47,7 @@ export function WatchModelSelector({ models, state, dispatch }: WatchModelSelect
 	const widthErrorId = useId();
 	const heightErrorId = useId();
 	const resolutionId = useId();
+	const customHintId = useId();
 
 	const selectSeries = (series: string) => {
 		if (series === CUSTOM_SERIES) {
@@ -102,11 +103,11 @@ export function WatchModelSelector({ models, state, dispatch }: WatchModelSelect
 							autoComplete="off"
 							value={widthText}
 							aria-invalid={errors.width ? true : undefined}
-							aria-describedby={errors.width ? widthErrorId : undefined}
+							aria-describedby={errors.width ? `${customHintId} ${widthErrorId}` : customHintId}
 							onChange={(event) => updateCustom(event.currentTarget.value, heightText)}
 						/>
 						{errors.width && (
-							<p id={widthErrorId} className="text-sm text-destructive">
+							<p id={widthErrorId} className="text-sm text-destructive" aria-live="polite">
 								{errors.width}
 							</p>
 						)}
@@ -119,16 +120,16 @@ export function WatchModelSelector({ models, state, dispatch }: WatchModelSelect
 							autoComplete="off"
 							value={heightText}
 							aria-invalid={errors.height ? true : undefined}
-							aria-describedby={errors.height ? heightErrorId : undefined}
+							aria-describedby={errors.height ? `${customHintId} ${heightErrorId}` : customHintId}
 							onChange={(event) => updateCustom(widthText, event.currentTarget.value)}
 						/>
 						{errors.height && (
-							<p id={heightErrorId} className="text-sm text-destructive">
+							<p id={heightErrorId} className="text-sm text-destructive" aria-live="polite">
 								{errors.height}
 							</p>
 						)}
 					</div>
-					<p className="col-span-2 text-xs text-muted-foreground">
+					<p id={customHintId} className="col-span-2 text-xs text-muted-foreground">
 						{CUSTOM_RESOLUTION_MIN_PX}〜{CUSTOM_RESOLUTION_MAX_PX}px の整数で指定します。
 					</p>
 				</div>
