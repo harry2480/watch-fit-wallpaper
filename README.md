@@ -17,7 +17,7 @@ WatchFit は、Apple Watch の「写真」文字盤に使う画像の位置と�
   - **Contain**: 画像全体が収まる大きさから始める（余白あり）
 - 位置・大きさの調整（ドラッグ、ピンチ、マウスホイール、ズームスライダー、方向ボタン）
 - 背景色の変更、フィット、リセット
-- PNG / JPEG での保存（iPhone では共有シート、PC ではダウンロード）
+- PNG / JPEG での保存（JPEG は品質を調整可能）。ファイル共有に対応したブラウザ（iPhone の Safari など）では共有シート、それ以外ではダウンロード
 - ダークモード（OS の設定に連動）
 
 ## 使い方
@@ -42,8 +42,8 @@ watchOS のバージョンによって操作や名称が異なる場合があり
 | 形式 | 対応 |
 |---|---|
 | JPEG / PNG / WebP | 対応 |
-| HEIC / HEIF | ブラウザがデコードできる場合のみ（iPhone の Safari で写真ライブラリから選ぶと JPEG として渡されます） |
-| SVG / GIF アニメーション / 動画 / PDF / RAW | 非対応 |
+| HEIC / HEIF | ブラウザがデコードできる場合のみ（iPhone の Safari で写真ライブラリから選ぶと、通常は JPEG として渡されます） |
+| GIF（静止画を含む）/ AVIF / SVG / 動画 / PDF / RAW | 非対応 |
 
 ファイルサイズは 30MB まで、画素数は 5,000 万画素までです。
 
@@ -104,7 +104,8 @@ pnpm dev            # 開発サーバー（http://localhost:5173/）
 pnpm verify         # Biome lint → 型チェック → 単体テスト
 pnpm test:unit      # 単体テスト（Vitest + React Testing Library）
 pnpm test:browser   # 描画テスト（実ブラウザでのピクセル比較）
-pnpm test:e2e       # E2E テスト（Playwright。ビルドしてから実行）
+pnpm test:e2e       # E2E テスト（Playwright。ビルドとプレビューサーバーの起動は自動）
+BASE_PATH=/watch-fit-wallpaper/ pnpm test:e2e   # GitHub Pages と同じサブパスで確認（CI と同じ条件）
 ```
 
 初回は `pnpm exec playwright install chromium` でブラウザを入れてください。
@@ -112,9 +113,11 @@ pnpm test:e2e       # E2E テスト（Playwright。ビルドしてから実行�
 ### ビルド
 
 ```sh
-pnpm build          # dist/ に静的ファイルを出力
-BASE_PATH=/watch-fit-wallpaper/ pnpm build   # サブパスで公開する場合
-pnpm preview        # ビルド結果を確認
+pnpm build && pnpm preview     # / で配信する前提でビルドして確認
+
+# GitHub Pages と同じサブパスで確認する場合は、build と preview の両方に同じ BASE_PATH を指定する
+BASE_PATH=/watch-fit-wallpaper/ pnpm build
+BASE_PATH=/watch-fit-wallpaper/ pnpm preview
 ```
 
 `BASE_PATH` を指定しない場合は `/` で配信する前提のビルドになります。
