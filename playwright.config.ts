@@ -16,7 +16,25 @@ export default defineConfig({
 		baseURL: `${origin}${basePath}`,
 		trace: 'on-first-retry',
 	},
-	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+	projects: [
+		{
+			name: 'chromium',
+			use: { ...devices['Desktop Chrome'] },
+			// Safari 専用の確認（共有のスタブ・合成タッチ）は WebKit だけで実行する
+			testIgnore: /safari\.spec\.ts$/,
+		},
+		// iPhone の Safari（WebKit）向け。PC 前提のダウンロード・ホイール操作のテストは除く
+		{
+			name: 'iphone-safari',
+			use: { ...devices['iPhone 15'] },
+			testMatch: /(safari|smoke|main-screen)\.spec\.ts$/,
+		},
+		{
+			name: 'desktop-safari',
+			use: { ...devices['Desktop Safari'] },
+			testMatch: /(safari|smoke|main-screen)\.spec\.ts$/,
+		},
+	],
 	webServer: {
 		command: `pnpm build && pnpm preview --port ${port} --strictPort`,
 		url: `${origin}${basePath}`,

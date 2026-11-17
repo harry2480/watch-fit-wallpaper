@@ -66,7 +66,7 @@ watchOS のバージョンによって操作や名称が異なる場合があり
 
 ## 既知の制限事項
 
-- Apple Watch の写真文字盤では、watchOS 側で表示位置や拡大率が調整される場合があります。本アプリが保証するのは「プレビューと保存画像の構図の一致」までで、Apple Watch 実機での表示の完全な一致は保証しません。
+- Apple Watch の写真文字盤では、watchOS 側で表示位置や拡大率が調整される場合があります。本アプリが保証するのは「プレビューと保存画像の構図の一致」までで、Apple Watch 実機での表示の完全な一致は保証しません。実機での検証手順と結果は [docs/実機検証.md](docs/実機検証.md) に記録します。
 - プレビューの角丸は見た目の目安です（Apple は角丸の寸法を公開していないため近似値です）。保存画像は通常の長方形で、角丸は付きません。
 - 時計の表示位置のガイド、画像の回転、Undo / Redo、背景ぼかし、オフライン対応は未対応です。
 - 画像の向き（EXIF Orientation）はブラウザの処理に従います。Display P3 などの色空間の画像は、ブラウザによって色が変わる場合があります。
@@ -104,11 +104,11 @@ pnpm dev            # 開発サーバー（http://localhost:5173/）
 pnpm verify         # Biome lint → 型チェック → 単体テスト
 pnpm test:unit      # 単体テスト（Vitest + React Testing Library）
 pnpm test:browser   # 描画テスト（実ブラウザでのピクセル比較）
-pnpm test:e2e       # E2E テスト（Playwright。ビルドとプレビューサーバーの起動は自動）
+pnpm test:e2e       # E2E テスト（Playwright。Chromium と WebKit〈iPhone・macOS の Safari 相当〉。ビルドとプレビューサーバーの起動は自動）
 BASE_PATH=/watch-fit-wallpaper/ pnpm test:e2e   # GitHub Pages と同じサブパスで確認（CI と同じ条件）
 ```
 
-初回は `pnpm exec playwright install chromium` でブラウザを入れてください。
+初回は `pnpm exec playwright install chromium webkit` でブラウザを入れてください。
 
 ### ビルド
 
@@ -140,6 +140,7 @@ BASE_PATH=/watch-fit-wallpaper/ pnpm preview
 
 - [要件定義](docs/要件定義.md)
 - [開発規約](docs/開発規約.md)
+- [実機検証](docs/実機検証.md)
 
 ## ライセンス
 
