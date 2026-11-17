@@ -3,29 +3,38 @@ import { buildExifSegment, insertExif } from '../fixtures/exif';
 import { makeQuadrantJpeg, makeQuadrantPng, near, previewBox, previewColorAt } from './helpers';
 
 /**
- * Safari（WebKit）向けの確認。iPhone の Safari が主要ターゲット（要件定義 25章）。
- * 実機の共有シートやタッチ操作は Playwright では扱えないため、
+ * WebKit エンジン（Playwright 版。CI では Linux 版）での確認。Safari そのものではない。
+ * iPhone の Safari が主要ターゲット（要件定義 25章）だが、実機の共有シートやタッチ操作は Playwright では扱えないため、
  * 共有はスタブに差し替え、タッチは Pointer Events を合成して確かめる。
  * 実機での最終確認は docs/実機検証.md の手順で人が行う。
  */
 
 type SharedFile = { name: string; type: string; width: number; height: number };
 
-/** navigator.share を記録用のスタブに差し替える。rejectFirst で 1 回目を権限切れにできる */
+/**
+ * navigator.share を記録用のスタブに差し替える。
+ * 実機と同じく、ユーザー操作の有効期限（userActivation）が切れていれば NotAllowedError にする。
+ * rejectFirst で 1 回目を強制的に権限切れにできる。
+ */
 async function stubShare(page: Page, rejectFirst = false) {
 	await page.addInitScript((reject) => {
 		const shared: SharedFile[] = [];
 		let calls = 0;
 		Object.assign(window, { __shared: shared });
-		Object.defineProperty(navigator, 'canShare', {
-			configurable: true,
-			value: (data: { files?: File[] }) => Array.isArray(data.files) && data.files.length > 0,
-		});
+		// ブラウザ本来の canShare があればそれを使う（形式の判定を隠さない）
+		if (typeof navigator.canShare !== 'function') {
+			Object.defineProperty(navigator, 'canShare', {
+				configurable: true,
+				value: (data: { files?: File[] }) => Array.isArray(data.files) && data.files.length > 0,
+			});
+		}
 		Object.defineProperty(navigator, 'share', {
 			configurable: true,
 			value: async (data: { files: File[] }) => {
 				calls += 1;
-				if (reject && calls === 1) {
+				const activation = (navigator as Navigator & { userActivation?: { isActive: boolean } })
+					.userActivation;
+				if ((reject && calls === 1) || (activation && !activation.isActive)) {
 					throw new DOMException('ユーザー操作が必要', 'NotAllowedError');
 				}
 				const file = data.files[0] as File;
@@ -46,7 +55,11 @@ async function shared(page: Page): Promise<SharedFile[]> {
 	return page.evaluate(() => (window as unknown as { __shared: SharedFile[] }).__shared);
 }
 
-/** タッチの Pointer Events を合成してプレビューに送る */
+/**
+ * タッチの Pointer Events を合成してプレビューに送る。
+ * 合成イベントでは pointer capture は失敗し（アプリ側で無視する）、touch-action によるスクロール抑止も
+ * 確かめられない。ここで確かめるのは、ドラッグ・ピンチの計算が WebKit で正しく動くことだけ。
+ */
 async function touch(page: Page, type: string, id: number, x: number, y: number, primary: boolean) {
 	await page.getByRole('img', { name: /表示プレビュー/ }).evaluate(
 		(canvas, args) => {
@@ -77,7 +90,8 @@ async function loadPhoto(page: Page) {
 	await expect(page.getByRole('img', { name: /表示プレビュー/ })).toBeVisible();
 }
 
-test('タッチのドラッグとピンチで位置と大きさを調整できる', async ({ page }) => {
+test('タッチのドラッグとピンチで位置と大きさを調整できる', async ({ page, isMobile }) => {
+	test.skip(!isMobile, 'タッチ操作は iPhone のエミュレーションだけで確かめる');
 	await loadPhoto(page);
 	const box = await previewBox(page);
 	const cx = box.x + box.width / 2;

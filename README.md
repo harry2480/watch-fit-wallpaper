@@ -104,7 +104,7 @@ pnpm dev            # 開発サーバー（http://localhost:5173/）
 pnpm verify         # Biome lint → 型チェック → 単体テスト
 pnpm test:unit      # 単体テスト（Vitest + React Testing Library）
 pnpm test:browser   # 描画テスト（実ブラウザでのピクセル比較）
-pnpm test:e2e       # E2E テスト（Playwright。Chromium と WebKit〈iPhone・macOS の Safari 相当〉。ビルドとプレビューサーバーの起動は自動）
+pnpm test:e2e       # E2E テスト（Playwright。Chromium と WebKit。ビルドとプレビューサーバーの起動は自動）
 BASE_PATH=/watch-fit-wallpaper/ pnpm test:e2e   # GitHub Pages と同じサブパスで確認（CI と同じ条件）
 ```
 

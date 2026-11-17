@@ -166,6 +166,43 @@ const images = {
 	],
 };
 
+/**
+ * 出力解像度ちょうどの、四辺に目盛りがある画像（WatchFit で Cover・フィットにすると切り取りが起きない）。
+ * 10px ごとに短い目盛り、50px ごとに長い目盛り。watchOS が何 px 切り取ったかを読み取れる。
+ */
+const RESOLUTIONS = [
+	[324, 394],
+	[368, 448],
+	[352, 430],
+	[396, 484],
+	[374, 446],
+	[416, 496],
+	[410, 502],
+	[422, 514],
+];
+for (const [w, h] of RESOLUTIONS) {
+	images[`08-ruler-${w}x${h}.png`] = [
+		w,
+		h,
+		(x, y) => {
+			const fromEdge = Math.min(x, y, w - 1 - x, h - 1 - y);
+			const along = fromEdge === x || fromEdge === w - 1 - x ? y : x;
+			const color =
+				fromEdge === y
+					? MARKS.top
+					: fromEdge === w - 1 - x
+						? MARKS.right
+						: fromEdge === h - 1 - y
+							? MARKS.bottom
+							: MARKS.left;
+			if (fromEdge === 0) return color;
+			if (along % 50 === 0 && fromEdge < 24) return color;
+			if (along % 10 === 0 && fromEdge < 10) return color;
+			return crosshair(x, y, w, h, 1) ? BLACK : WHITE;
+		},
+	];
+}
+
 mkdirSync(outDir, { recursive: true });
 for (const [name, [width, height, draw]] of Object.entries(images)) {
 	const png = encodePng(width, height, (x, y) => draw(x, y, width, height));

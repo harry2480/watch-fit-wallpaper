@@ -23,16 +23,17 @@ export default defineConfig({
 			// Safari 専用の確認（共有のスタブ・合成タッチ）は WebKit だけで実行する
 			testIgnore: /safari\.spec\.ts$/,
 		},
-		// iPhone の Safari（WebKit）向け。PC 前提のダウンロード・ホイール操作のテストは除く
+		// WebKit エンジン（Playwright 版）。Safari そのものではなく、iPhone は画面サイズ・UA・タッチ有無のエミュレーションのみ。
+		// WebKit は共有シートを開くため、PC 前提のダウンロードとホイール操作を使うテストは除く
 		{
 			name: 'iphone-safari',
 			use: { ...devices['iPhone 15'] },
-			testMatch: /(safari|smoke|main-screen)\.spec\.ts$/,
+			testIgnore: /(export|full-flow|privacy)\.spec\.ts$/,
 		},
 		{
 			name: 'desktop-safari',
 			use: { ...devices['Desktop Safari'] },
-			testMatch: /(safari|smoke|main-screen)\.spec\.ts$/,
+			testIgnore: /(export|full-flow|privacy)\.spec\.ts$/,
 		},
 	],
 	webServer: {
