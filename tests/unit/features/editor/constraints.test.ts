@@ -158,6 +158,32 @@ describe('点を中心にしたズーム', () => {
 		expect(zoomed.centerX + sourceX * zoomed.scale).toBeCloseTo(anchor.x, 9);
 	});
 
+	it.each([
+		['最大を超える要求', 100, 4],
+		['最小を下回る要求', 0.0001, 0.25],
+	])('%s でも制限後の倍率でアンカーの点が X・Y とも同じ位置に残る', (_n, requested, ratio) => {
+		const base = { ...centeredTransform('contain', image, output), scale: 0.5 };
+		const anchor = { x: 180, y: 260 };
+		const sourceX = (anchor.x - base.centerX) / base.scale;
+		const sourceY = (anchor.y - base.centerY) / base.scale;
+		const zoomed = zoomTransformAt(base, requested, anchor, 'contain', image, output);
+		expect(zoomed.scale).toBeCloseTo(containScale(image, output) * ratio, 12);
+		expect(zoomed.centerX + sourceX * zoomed.scale).toBeCloseTo(anchor.x, 9);
+		expect(zoomed.centerY + sourceY * zoomed.scale).toBeCloseTo(anchor.y, 9);
+	});
+
+	it.each([
+		['NaN', Number.NaN],
+		['Infinity', Number.POSITIVE_INFINITY],
+		['0', 0],
+		['負数', -1],
+	])('%s の倍率要求は無視して現在の状態を維持する', (_n, requested) => {
+		const base = { ...centeredTransform('contain', image, output), scale: 0.5, centerX: 150 };
+		expect(zoomTransformAt(base, requested, { x: 10, y: 10 }, 'contain', image, output)).toEqual(
+			base,
+		);
+	});
+
 	it('最大倍率を超える要求は最大倍率に制限する', () => {
 		const base = centeredTransform('cover', image, output);
 		const zoomed = zoomTransformAt(base, 100, { x: 0, y: 0 }, 'cover', image, output);
@@ -212,14 +238,19 @@ describe('モード切り替え', () => {
 		expectCovers(cover, image);
 	});
 
-	it('無条件に中央へ戻さない', () => {
-		const contain = {
-			...centeredTransform('contain', image, output),
-			scale: coverScale(image, output) * 2,
-			centerX: 300,
-		};
+	it('Contain から横に動かした構図は、Cover へ切り替えても中央へ戻さない', () => {
+		const contain = panTransform(
+			centeredTransform('contain', image, output),
+			{ x: 60, y: 0 },
+			'contain',
+			image,
+			output,
+		);
 		const cover = switchFitMode(contain, 'cover', image, output);
-		expect(cover.centerX).toBe(300);
+		expect(cover.scale).toBe(coverScale(image, output));
+		expect(cover.centerX).toBe(contain.centerX);
+		expect(cover.centerX).not.toBe(output.width / 2);
+		expectCovers(cover, image);
 	});
 });
 
@@ -245,6 +276,23 @@ describe('出力サイズ変更（モデル変更）', () => {
 		);
 		const resized = resizeOutput(t, output, { width: 422, height: 514 }, 'cover', image);
 		expectCovers(resized, image, { width: 422, height: 514 });
+	});
+});
+
+describe('出力サイズ変更の不正入力', () => {
+	const image = { width: 1200, height: 1600 };
+
+	it('変更前のサイズが不正なら比率を使わず、新しいサイズで制約だけを適用する', () => {
+		const t = { centerX: 200, centerY: 260, scale: 0.4, rotationDeg: 0 };
+		const resized = resizeOutput(t, { width: 0, height: 0 }, output, 'contain', image);
+		expect(resized).toEqual(constrainTransform(t, 'contain', image, output));
+	});
+
+	it('変更後のサイズが不正なら例外にする', () => {
+		const t = { centerX: 200, centerY: 260, scale: 0.4, rotationDeg: 0 };
+		expect(() =>
+			resizeOutput(t, output, { width: Number.NaN, height: 100 }, 'contain', image),
+		).toThrow(RangeError);
 	});
 });
 

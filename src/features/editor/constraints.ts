@@ -3,6 +3,7 @@ import {
 	clampScale,
 	type FitMode,
 	type ImageTransform,
+	isValidSize,
 	type Point,
 	type Size,
 } from './geometry';
@@ -88,6 +89,7 @@ export function panTransform(
 /**
  * anchor（Output 座標）にある画像上の点が動かないように倍率を変える（7.9・7.10）。
  * 倍率は範囲内に制限し、制限後の倍率で中心を補正する。
+ * 不正な倍率（NaN・Infinity・0 以下）の要求は無視し、現在の倍率を維持する。
  */
 export function zoomTransformAt(
 	transform: ImageTransform,
@@ -97,6 +99,9 @@ export function zoomTransformAt(
 	image: Size,
 	output: Size,
 ): ImageTransform {
+	if (!Number.isFinite(requestedScale) || requestedScale <= 0) {
+		return constrainTransform(transform, mode, image, output);
+	}
 	const scale = clampScale(requestedScale, mode, image, output);
 	const ratio = scale / transform.scale;
 	return constrainTransform(
@@ -125,6 +130,7 @@ export function switchFitMode(
 /**
  * 出力サイズ変更（モデル変更、4.6）。
  * 中心の相対位置と見た目の相対サイズを維持し、制約を再適用する。
+ * 変更前のサイズが不正な場合は比率を計算せず、新しいサイズで制約だけを適用する。
  */
 export function resizeOutput(
 	transform: ImageTransform,
@@ -133,6 +139,9 @@ export function resizeOutput(
 	mode: FitMode,
 	image: Size,
 ): ImageTransform {
+	if (!isValidSize(previousOutput)) {
+		return constrainTransform(transform, mode, image, nextOutput);
+	}
 	const ratioX = nextOutput.width / previousOutput.width;
 	const ratioY = nextOutput.height / previousOutput.height;
 	return constrainTransform(
