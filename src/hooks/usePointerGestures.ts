@@ -81,6 +81,8 @@ export function usePointerGestures(
 		let pinch: PinchStart | null = null;
 		let wheelTimer: ReturnType<typeof setTimeout> | undefined;
 		let trackpad: { transform: ImageTransform } | null = null;
+		/** 操作できる状態で始まった Safari のジェスチャーの間だけ true */
+		let gestureActive = false;
 
 		const context = () => optionsRef.current.getContext();
 
@@ -94,6 +96,7 @@ export function usePointerGestures(
 			drag = null;
 			pinch = null;
 			trackpad = null;
+			gestureActive = false;
 			live = null;
 			clearTimeout(wheelTimer);
 			wheelTimer = undefined;
@@ -238,14 +241,23 @@ export function usePointerGestures(
 
 		// Safari: ページ全体のピンチズームを止める。トラックパッドのピンチ（ポインタ無し）はズームに使う
 		const onGestureStart = (event: Event) => {
-			event.preventDefault();
 			const ctx = context();
-			if (ctx && pointers.size === 0) {
+			// 操作できない状態（画像未選択・読み取り専用）ではページの標準動作を妨げない
+			if (!ctx) {
+				gestureActive = false;
+				return;
+			}
+			gestureActive = true;
+			event.preventDefault();
+			if (pointers.size === 0) {
 				flushWheel();
 				trackpad = { transform: live ?? ctx.transform };
 			}
 		};
 		const onGestureChange = (event: Event) => {
+			if (!gestureActive) {
+				return;
+			}
 			event.preventDefault();
 			const ctx = context();
 			const gesture = event as SafariGestureEvent;
@@ -269,6 +281,10 @@ export function usePointerGestures(
 			);
 		};
 		const onGestureEnd = (event: Event) => {
+			if (!gestureActive) {
+				return;
+			}
+			gestureActive = false;
 			event.preventDefault();
 			if (trackpad) {
 				commit();

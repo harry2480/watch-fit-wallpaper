@@ -265,6 +265,44 @@ describe('WatchPreview の操作', () => {
 	});
 });
 
+describe('Safari のジェスチャーイベント', () => {
+	function gesture(canvas: HTMLElement, type: string, scale = 1) {
+		const event = Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
+			scale,
+			clientX: 60,
+			clientY: 70,
+		});
+		canvas.dispatchEvent(event);
+		return event;
+	}
+
+	it('操作できるときはページのピンチズームを止め、トラックパッドのピンチでズームする', () => {
+		const { canvas, transform, onTransformCommit } = setup();
+		expect(gesture(canvas, 'gesturestart').defaultPrevented).toBe(true);
+		expect(gesture(canvas, 'gesturechange', 1.5).defaultPrevented).toBe(true);
+		gesture(canvas, 'gestureend', 1.5);
+		const committed = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
+		expect(committed.scale).toBeCloseTo(transform.scale * 1.5, 9);
+	});
+
+	it('操作できないプレビューではページの標準動作を妨げない', () => {
+		render(
+			<WatchPreview
+				source={null}
+				sourceSize={null}
+				output={output}
+				transform={centeredTransform('cover', image, output)}
+				backgroundColor="#000000"
+				label="読み取り専用"
+			/>,
+		);
+		const canvas = screen.getByRole('img', { name: '読み取り専用' });
+		expect(gesture(canvas, 'gesturestart').defaultPrevented).toBe(false);
+		expect(gesture(canvas, 'gesturechange', 2).defaultPrevented).toBe(false);
+		expect(gesture(canvas, 'gestureend', 2).defaultPrevented).toBe(false);
+	});
+});
+
 describe('contentRect', () => {
 	it('border と padding を除いた矩形を返す', () => {
 		const element = document.createElement('div');
