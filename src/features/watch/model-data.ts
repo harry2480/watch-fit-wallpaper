@@ -6,6 +6,8 @@ import type { WatchModel } from './schema';
  *
  * 確認元は Apple 公式の技術仕様ページ（support.apple.com）を優先し、そこに画面解像度の記載が無い
  * モデル（Series 9）と技術仕様ページが未公開のモデル（Series 12・Ultra 4）は比較ページで確認した。
+ * 比較ページは掲載モデルが入れ替わるため、確認時点は verifiedAt で示す。Series 12・Ultra 4 は
+ * support.apple.com の技術仕様ページが公開されたら sourceUrl を差し替える。
  *
  * cornerRadiusRatio（プレビューの角丸）は Apple が数値を公開していないため、
  * 全モデル共通の近似値 0.2（画面幅に対する比率）を使う。出力画像には影響しない（要件定義 8.5）。

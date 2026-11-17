@@ -37,20 +37,37 @@ describe('登録済みの Apple Watch モデル', () => {
 		);
 	});
 
-	// Apple 公式の技術仕様ページで確認した値（2026-11-17）
-	it.each([
-		['series11-46mm', 416, 496],
-		['series11-42mm', 374, 446],
-		['series7-45mm', 396, 484],
-		['series7-41mm', 352, 430],
-		['se3-44mm', 368, 448],
-		['se3-40mm', 324, 394],
-		['ultra2-49mm', 410, 502],
-		['ultra3-49mm', 422, 514],
-	])('%s は %d x %d px', (id, width, height) => {
-		const model = findWatchModel(WATCH_MODELS, id);
-		expect(model?.widthPx).toBe(width);
-		expect(model?.heightPx).toBe(height);
+	// Apple 公式ページで確認した値（2026-11-17）。全モデルを固定し、写し間違いを検出する
+	it('全モデルの解像度が確認した値と一致する', () => {
+		const expected: Record<string, [number, number]> = {
+			'ultra4-49mm': [422, 514],
+			'ultra3-49mm': [422, 514],
+			'ultra2-49mm': [410, 502],
+			'ultra-49mm': [410, 502],
+			'series12-46mm': [416, 496],
+			'series12-42mm': [374, 446],
+			'series11-46mm': [416, 496],
+			'series11-42mm': [374, 446],
+			'series10-46mm': [416, 496],
+			'series10-42mm': [374, 446],
+			'series9-45mm': [396, 484],
+			'series9-41mm': [352, 430],
+			'series8-45mm': [396, 484],
+			'series8-41mm': [352, 430],
+			'series7-45mm': [396, 484],
+			'series7-41mm': [352, 430],
+			'se3-44mm': [368, 448],
+			'se3-40mm': [324, 394],
+			'se2-44mm': [368, 448],
+			'se2-40mm': [324, 394],
+			'se-44mm': [368, 448],
+			'se-40mm': [324, 394],
+		};
+		const actual = Object.fromEntries(
+			WATCH_MODELS.map((model) => [model.id, [model.widthPx, model.heightPx]]),
+		);
+		expect(actual).toEqual(expected);
+		expect(findWatchModel(WATCH_MODELS, 'series11-46mm')?.series).toBe('Apple Watch Series 11');
 	});
 
 	it('ラベルはケースサイズと一致する', () => {
