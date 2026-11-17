@@ -7,9 +7,12 @@ import { type WatchModel, watchModelListSchema } from './schema';
 const WATCH_MODEL_DATA: readonly WatchModel[] = [];
 
 /** モデル一覧を検証して返す。不正な定義が混ざっていれば例外にする（実装ミスの検出） */
-export function loadWatchModels(data: readonly unknown[] = WATCH_MODEL_DATA): WatchModel[] {
+export function loadWatchModels(data: readonly unknown[]): WatchModel[] {
 	return watchModelListSchema.parse(data);
 }
+
+/** 登録済みモデル。読み込み時に 1 回だけ検証し、同じ参照を返す */
+export const WATCH_MODELS: readonly WatchModel[] = Object.freeze(loadWatchModels(WATCH_MODEL_DATA));
 
 export function findWatchModel(models: readonly WatchModel[], id: string): WatchModel | undefined {
 	return models.find((model) => model.id === id);

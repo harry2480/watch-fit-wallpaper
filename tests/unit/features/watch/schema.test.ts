@@ -27,6 +27,7 @@ describe('watchModelSchema', () => {
 	it.each([
 		['sourceUrl', { sourceUrl: undefined }],
 		['verifiedAt', { verifiedAt: undefined }],
+		['sourceUrl と verifiedAt の両方', { sourceUrl: undefined, verifiedAt: undefined }],
 	])('確認済みなのに %s が無ければ拒否する', (_name, patch) => {
 		expect(watchModelSchema.safeParse({ ...validModel, ...patch }).success).toBe(false);
 	});
@@ -42,6 +43,13 @@ describe('watchModelSchema', () => {
 		['http の URL', { sourceUrl: 'http://example.com/specs' }],
 		['日付形式が不正', { verifiedAt: '2026/11/17' }],
 		['未知のキー', { extra: 1 }],
+		['ケースサイズが0', { caseSizeMm: 0 }],
+		['ケースサイズが小数', { caseSizeMm: 45.5 }],
+		['シリーズ名が空白のみ', { series: '   ' }],
+		['ラベルが空', { label: '' }],
+		['ドメイン形式でないホスト', { sourceUrl: 'https://localhost/specs' }],
+		['存在しない日付', { verifiedAt: '2026-02-30' }],
+		['長すぎる id', { id: 'a'.repeat(65) }],
 	])('%s の定義を拒否する', (_name, patch) => {
 		expect(watchModelSchema.safeParse({ ...validModel, ...patch }).success).toBe(false);
 	});

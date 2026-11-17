@@ -13,23 +13,26 @@ describe('validateCustomResolution', () => {
 		});
 	});
 
+	const rangeError = '幅は100〜2048pxの範囲で入力してください';
 	it.each([
-		['0', 0],
-		['負数', -100],
-		['下限未満', 99],
-		['上限超過', 2049],
-		['小数', 100.5],
-		['NaN', Number.NaN],
-		['Infinity', Number.POSITIVE_INFINITY],
-		['文字列', '200'],
-		['undefined', undefined],
-	])('幅が %s なら理由付きで拒否する', (_name, width) => {
-		const result = validateCustomResolution(width, 200);
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.errors.width).toMatch(/幅/);
-			expect(result.errors.height).toBeUndefined();
-		}
+		['0', 0, rangeError],
+		['負数', -100, rangeError],
+		['下限未満', 99, rangeError],
+		['上限超過', 2049, rangeError],
+		['小数', 100.5, '幅は整数で入力してください'],
+		['NaN', Number.NaN, '幅を数値で入力してください'],
+		['Infinity', Number.POSITIVE_INFINITY, '幅に有限の数値を入力してください'],
+		['文字列', '200', '幅を数値で入力してください'],
+		['undefined', undefined, '幅を数値で入力してください'],
+	])('幅が %s なら理由付きで拒否する', (_name, width, message) => {
+		expect(validateCustomResolution(width, 200)).toEqual({ ok: false, errors: { width: message } });
+	});
+
+	it('高さだけが不正なら高さの理由だけを返す', () => {
+		expect(validateCustomResolution(200, 100.5)).toEqual({
+			ok: false,
+			errors: { height: '高さは整数で入力してください' },
+		});
 	});
 
 	it('幅と高さの両方の理由を返す', () => {
@@ -49,6 +52,10 @@ describe('parseDimensionInput', () => {
 		['416', 416],
 		[' 416 ', 416],
 		['416.5', 416.5],
+		['416.', 416],
+		['+100', 100],
+		['-100', -100],
+		['４１６', 416],
 	])('"%s" を %d にする', (input, expected) => {
 		expect(parseDimensionInput(input)).toBe(expected);
 	});

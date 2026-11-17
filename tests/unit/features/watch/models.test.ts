@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { findWatchModel, groupWatchModelsBySeries, loadWatchModels } from '@/features/watch/models';
+import {
+	findWatchModel,
+	groupWatchModelsBySeries,
+	loadWatchModels,
+	WATCH_MODELS,
+} from '@/features/watch/models';
 
 function model(id: string, series: string, label: string) {
 	return {
@@ -21,8 +26,9 @@ const data = [
 ];
 
 describe('loadWatchModels', () => {
-	it('登録済みデータがスキーマに適合する', () => {
-		expect(() => loadWatchModels()).not.toThrow();
+	it('登録済みデータは読み込み時に検証済みで、同じ参照を返す', () => {
+		expect(Array.isArray(WATCH_MODELS)).toBe(true);
+		expect(Object.isFrozen(WATCH_MODELS)).toBe(true);
 	});
 
 	it('不正な定義があれば例外にする', () => {

@@ -44,9 +44,10 @@ export function validateCustomResolution(width: unknown, height: unknown): Custo
 /**
  * 入力欄の文字列を数値に変換する。空欄・数字以外を含む文字列は NaN にする。
  * Number('') が 0 になる・'1e3' が 1000 になるといった暗黙変換を避ける。
+ * 全角数字（IME 入力）は半角に正規化する。
  */
 export function parseDimensionInput(input: string): number {
-	const trimmed = input.trim();
+	const trimmed = input.normalize('NFKC').trim();
 	if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(trimmed)) {
 		return Number.NaN;
 	}
