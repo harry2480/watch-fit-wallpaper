@@ -103,7 +103,9 @@ test('タッチのドラッグとピンチで位置と大きさを調整でき�
 	await touch(page, 'pointermove', 1, cx + box.width * 0.2, cy, true);
 	await touch(page, 'pointermove', 1, cx + box.width * 0.4, cy, true);
 	await touch(page, 'pointerup', 1, cx + box.width * 0.4, cy, true);
-	await expect.poll(() => previewColorAt(page, 0.6, 0.25)).toEqual([255, 0, 0]);
+	await expect
+		.poll(async () => near(await previewColorAt(page, 0.6, 0.25), [255, 0, 0], 12))
+		.toBe(true);
 
 	// 2 本指で広げると拡大する
 	const slider = page.getByRole('slider', { name: 'ズーム' });

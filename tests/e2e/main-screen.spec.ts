@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { makeQuadrantPng } from './helpers';
+import { makeQuadrantPng, near } from './helpers';
 
 test('画像を選ぶと Apple Watch のプレビューに描画される', async ({ page }) => {
 	await page.goto('./');
@@ -22,8 +22,9 @@ test('画像を選ぶと Apple Watch のプレビューに描画される', asyn
 			bottomRight: at(Math.floor(canvas.width * 0.9), Math.floor(canvas.height * 0.9)),
 		};
 	});
-	expect(colors.topLeft).toEqual([255, 0, 0]);
-	expect(colors.bottomRight).toEqual([255, 255, 0]);
+	// ブラウザの色管理による小さな差は許容する
+	expect(near(colors.topLeft, [255, 0, 0], 12)).toBe(true);
+	expect(near(colors.bottomRight, [255, 255, 0], 12)).toBe(true);
 });
 
 test('対応していないファイルではエラーを表示し、選び直せる', async ({ page }) => {
