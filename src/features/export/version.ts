@@ -1,5 +1,5 @@
 import type { ImageTransform, Size } from '@/features/editor/geometry';
-import type { ExportFormat } from '@/features/editor/reducer';
+import type { ExportFormat, ExportScale } from '@/features/editor/reducer';
 
 export type ExportVersionInput = {
 	/** 読み込んだ画像ごとに変わる識別子 */
@@ -9,6 +9,7 @@ export type ExportVersionInput = {
 	backgroundColor: string;
 	format: ExportFormat;
 	quality: number;
+	scale: ExportScale;
 };
 
 /**
@@ -28,5 +29,6 @@ export function exportVersion(input: ExportVersionInput): string {
 		input.backgroundColor,
 		input.format,
 		input.quality,
+		input.scale,
 	]);
 }

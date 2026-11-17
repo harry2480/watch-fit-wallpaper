@@ -12,6 +12,7 @@ const snapshot: ExportSnapshot = {
 	backgroundColor: '#000000',
 	format: 'png',
 	quality: 0.92,
+	scale: 1,
 };
 
 function deps(overrides: Partial<ExportDependencies> = {}): ExportDependencies {
@@ -27,6 +28,7 @@ function deps(overrides: Partial<ExportDependencies> = {}): ExportDependencies {
 
 function setup(d: ExportDependencies) {
 	const onFormatChange = vi.fn();
+	const onScaleChange = vi.fn();
 	let current = 'v1';
 	const getSnapshot = () => ({ snapshot, version: current });
 	const element = (editVersion: string) => (
@@ -36,6 +38,9 @@ function setup(d: ExportDependencies) {
 			format="png"
 			quality={0.92}
 			onFormatChange={onFormatChange}
+			output={snapshot.output}
+			scale={1}
+			onScaleChange={onScaleChange}
 			disabled={false}
 			editVersion={editVersion}
 			deps={d}
@@ -236,6 +241,9 @@ describe('ExportPanel', () => {
 				format="jpeg"
 				quality={0.92}
 				onFormatChange={onFormatChange}
+				output={snapshot.output}
+				scale={1}
+				onScaleChange={vi.fn()}
 				disabled={false}
 				editVersion="v1"
 				deps={deps()}
@@ -247,5 +255,76 @@ describe('ExportPanel', () => {
 		expect(onFormatChange).toHaveBeenCalledWith('jpeg', 0.75);
 		fireEvent.click(screen.getByRole('radio', { name: 'PNG' }));
 		expect(onFormatChange).toHaveBeenCalledWith('png');
+	});
+
+	it('解像度は 標準・2倍・3倍 から選べ、それぞれの画素数を示す', () => {
+		const onScaleChange = vi.fn();
+		render(
+			<ExportPanel
+				getSnapshot={() => ({ snapshot, version: 'v1' })}
+				fileId="x"
+				format="png"
+				quality={0.92}
+				onFormatChange={vi.fn()}
+				output={{ width: 368, height: 448 }}
+				scale={1}
+				onScaleChange={onScaleChange}
+				disabled={false}
+				editVersion="v1"
+				deps={deps()}
+			/>,
+		);
+		expect(screen.getByRole('radio', { name: /標準/ })).toBeChecked();
+		expect(screen.getByText('1104×1344')).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('radio', { name: /3倍/ }));
+		expect(onScaleChange).toHaveBeenCalledWith(3);
+	});
+
+	it('上限を超える倍率は選べず、使える最大の倍率を選択中として示す', () => {
+		render(
+			<ExportPanel
+				getSnapshot={() => ({ snapshot, version: 'v1' })}
+				fileId="x"
+				format="png"
+				quality={0.92}
+				onFormatChange={vi.fn()}
+				output={{ width: 2048, height: 2048 }}
+				scale={3}
+				onScaleChange={vi.fn()}
+				disabled={false}
+				editVersion="v1"
+				deps={deps()}
+			/>,
+		);
+		expect(screen.getByRole('radio', { name: /3倍/ })).toBeDisabled();
+		expect(screen.getByRole('radio', { name: /2倍/ })).toBeChecked();
+	});
+
+	it('2 倍以上で保存したファイル名には倍率が付く', async () => {
+		const d = deps();
+		render(
+			<ExportPanel
+				getSnapshot={() => ({ snapshot: { ...snapshot, scale: 2 }, version: 'v1' })}
+				fileId="se3-44mm"
+				format="png"
+				quality={0.92}
+				onFormatChange={vi.fn()}
+				output={snapshot.output}
+				scale={2}
+				onScaleChange={vi.fn()}
+				disabled={false}
+				editVersion="v1"
+				deps={d}
+			/>,
+		);
+		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+		await waitFor(() =>
+			expect(d.download).toHaveBeenCalledWith(
+				expect.any(Blob),
+				'watchfit-se3-44mm-2x-20261117-203000.png',
+				'blob:generated',
+			),
+		);
+		expect(d.generate).toHaveBeenCalledWith({ ...snapshot, scale: 2 });
 	});
 });

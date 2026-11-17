@@ -2,11 +2,23 @@ import { Download, Share2 } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { type ExportFormat, MAX_JPEG_QUALITY, MIN_JPEG_QUALITY } from '@/features/editor/reducer';
+import type { Size } from '@/features/editor/geometry';
+import {
+	EXPORT_SCALES,
+	type ExportFormat,
+	type ExportScale,
+	MAX_JPEG_QUALITY,
+	MIN_JPEG_QUALITY,
+} from '@/features/editor/reducer';
 import { downloadBlob } from '@/features/export/download';
 import { ExportError } from '@/features/export/errors';
 import { exportFilename, MIME_TYPES } from '@/features/export/filename';
 import { type ExportSnapshot, generateExportBlob } from '@/features/export/generate';
+import {
+	effectiveExportScale,
+	isExportScaleAvailable,
+	scaledOutputSize,
+} from '@/features/export/scale';
 import { canShareFile, shareFile } from '@/features/export/share';
 import { cn } from '@/lib/utils';
 import { SaveGuide } from './SaveGuide';
@@ -38,6 +50,11 @@ type ExportPanelProps = {
 	format: ExportFormat;
 	quality: number;
 	onFormatChange: (format: ExportFormat, quality?: number) => void;
+	/** 出力サイズ（Output 座標系）。出力不可のときは null */
+	output: Size | null;
+	/** 選んでいる出力倍率。上限を超える場合は、使える最大の倍率で表示・保存する */
+	scale: ExportScale;
+	onScaleChange: (scale: ExportScale) => void;
 	disabled: boolean;
 	/**
 	 * 現在の編集状態から作った識別子。生成済みの画像の識別子と異なる場合、その画像と保存の状態は
@@ -71,6 +88,9 @@ export function ExportPanel({
 	format,
 	quality,
 	onFormatChange,
+	output,
+	scale,
+	onScaleChange,
 	disabled,
 	editVersion,
 	deps = defaultDependencies,
@@ -81,6 +101,9 @@ export function ExportPanel({
 	const [resultVersion, setResultVersion] = useState<string | null>(null);
 	const qualityId = useId();
 	const formatName = useId();
+	const scaleName = useId();
+	const scaleHintId = useId();
+	const shownScale = output ? effectiveExportScale(output, scale) : scale;
 
 	const working = status.kind === 'working';
 	// 保存の結果が現在の編集状態と一致するか。作成中に編集された場合も、完了後に不一致になる
@@ -124,7 +147,7 @@ export function ExportPanel({
 		setStatus({ kind: 'working' });
 		try {
 			const blob = await deps.generate(snapshot);
-			const filename = exportFilename(fileId, snapshot.format, deps.now());
+			const filename = exportFilename(fileId, snapshot.format, deps.now(), snapshot.scale);
 			const file = new File([blob], filename, { type: MIME_TYPES[snapshot.format] });
 			const url = URL.createObjectURL(blob);
 			setGenerated({ file, url });
@@ -195,6 +218,49 @@ export function ExportPanel({
 						/>
 					</div>
 				)}
+			</fieldset>
+
+			<fieldset
+				className="flex flex-col gap-2"
+				disabled={disabled || working}
+				aria-describedby={scaleHintId}
+			>
+				<legend className="mb-2 text-sm font-medium">解像度</legend>
+				<div className="grid grid-cols-3 gap-2">
+					{EXPORT_SCALES.map((value) => {
+						const size = output ? scaledOutputSize(output, value) : null;
+						const available = output ? isExportScaleAvailable(output, value) : true;
+						return (
+							<label
+								key={value}
+								className={cn(
+									'relative flex min-h-11 cursor-pointer flex-col items-center justify-center rounded-md border border-input px-1 py-1.5 text-sm font-medium transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50',
+									shownScale === value && 'border-primary bg-accent',
+								)}
+							>
+								<input
+									type="radio"
+									name={scaleName}
+									value={value}
+									checked={shownScale === value}
+									disabled={!available}
+									onChange={() => onScaleChange(value)}
+									className="sr-only"
+								/>
+								{value === 1 ? '標準' : `${value}倍`}
+								{size && (
+									<span className="text-xs font-normal tabular-nums text-muted-foreground">
+										{size.width}×{size.height}
+									</span>
+								)}
+							</label>
+						);
+					})}
+				</div>
+				<p id={scaleHintId} className="text-xs text-muted-foreground">
+					構図は同じまま画素数だけを増やします。watchOS 11
+					以降の写真文字盤は画像を拡大して表示することがあり、2倍・3倍にすると拡大されたときの粗さを抑えられます。元の写真より細かくはなりません。
+				</p>
 			</fieldset>
 
 			<Button

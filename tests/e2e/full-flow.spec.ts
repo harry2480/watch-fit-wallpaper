@@ -93,6 +93,15 @@ test('要件定義 18.4 の一連の操作で、PNG と JPEG を正しい解像�
 	]);
 	expect(jpeg.suggestedFilename()).toMatch(/^watchfit-se3-40mm-\d{8}-\d{6}\.jpg$/);
 	expect(jpegSize(await readFile(await jpeg.path()))).toEqual([324, 394]);
+	// 高解像度出力: 3 倍を選ぶと縦横 3 倍の画素数で保存し、ファイル名に倍率が付く
+	await page.getByRole('radio', { name: /3倍/ }).check({ force: true });
+	await expect(page.getByRole('radio', { name: /3倍/ })).toBeChecked();
+	const [jpeg3x] = await Promise.all([
+		page.waitForEvent('download'),
+		page.getByRole('button', { name: '画像を保存' }).click(),
+	]);
+	expect(jpeg3x.suggestedFilename()).toMatch(/^watchfit-se3-40mm-3x-\d{8}-\d{6}\.jpg$/);
+	expect(jpegSize(await readFile(await jpeg3x.path()))).toEqual([972, 1182]);
 });
 
 test('EXIF の向き（Orientation 6）を一度だけ適用して表示する', async ({ page }) => {

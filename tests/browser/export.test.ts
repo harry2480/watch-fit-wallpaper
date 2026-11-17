@@ -39,6 +39,7 @@ describe('generateExportBlob（実ブラウザ）', () => {
 			backgroundColor: '#000000',
 			format,
 			quality: 0.92,
+			scale: 1,
 		});
 		expect(blob.type).toBe(format === 'png' ? 'image/png' : 'image/jpeg');
 		const bitmap = await createImageBitmap(blob);
@@ -70,6 +71,7 @@ describe('generateExportBlob（実ブラウザ）', () => {
 				backgroundColor: '#000000',
 				format,
 				quality: 0.92,
+				scale: 1,
 			});
 			decoded.release();
 			const bytes = new Uint8Array(await blob.arrayBuffer());
@@ -96,6 +98,7 @@ describe('generateExportBlob（実ブラウザ）', () => {
 			backgroundColor: '#123456',
 			format: 'png',
 			quality: 0.92,
+			scale: 1,
 		});
 		const bitmap = await createImageBitmap(blob);
 		const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
@@ -136,6 +139,7 @@ describe('generateExportBlob（実ブラウザ）', () => {
 			backgroundColor: '#000000',
 			format: 'png',
 			quality: 0.92,
+			scale: 1,
 		});
 		const bitmap = await createImageBitmap(blob);
 		const exported = new OffscreenCanvas(416, 496);
@@ -149,5 +153,49 @@ describe('generateExportBlob（実ブラウザ）', () => {
 		}
 		expect(diff).toBeLessThanOrEqual(2);
 		bitmap.close();
+	});
+
+	it('2 倍・3 倍でも構図は同じで、画素数だけが増える', async () => {
+		const transform = panTransform(
+			{ ...centeredTransform('cover', imageSize, output), scale: 0.8 },
+			{ x: 23, y: -17 },
+			'cover',
+			imageSize,
+			output,
+		);
+		const read = async (scale: 1 | 3) => {
+			const blob = await generateExportBlob({
+				source: image,
+				sourceSize: imageSize,
+				output,
+				transform,
+				backgroundColor: '#000000',
+				format: 'png',
+				quality: 0.92,
+				scale,
+			});
+			const bitmap = await createImageBitmap(blob);
+			const size = [bitmap.width, bitmap.height];
+			// 比較のため 1 倍の大きさに縮小して読む
+			const canvas = new OffscreenCanvas(416, 496);
+			const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+			ctx.drawImage(bitmap, 0, 0, 416, 496);
+			bitmap.close();
+			return { size, data: ctx.getImageData(0, 0, 416, 496).data };
+		};
+		const base = await read(1);
+		const triple = await read(3);
+		expect(triple.size).toEqual([1248, 1488]);
+		// 4 色の境界付近を除けば同じ色になる（縮小による境界のにじみだけを許容する）
+		let mismatched = 0;
+		for (let i = 0; i < base.data.length; i += 4) {
+			const d = Math.max(
+				Math.abs((base.data[i] ?? 0) - (triple.data[i] ?? 0)),
+				Math.abs((base.data[i + 1] ?? 0) - (triple.data[i + 1] ?? 0)),
+				Math.abs((base.data[i + 2] ?? 0) - (triple.data[i + 2] ?? 0)),
+			);
+			if (d > 8) mismatched += 1;
+		}
+		expect(mismatched / (416 * 496)).toBeLessThan(0.01);
 	});
 });

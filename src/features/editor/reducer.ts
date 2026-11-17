@@ -30,6 +30,14 @@ export const MAX_JPEG_QUALITY = 1;
 
 export type ExportFormat = 'png' | 'jpeg';
 
+/**
+ * 出力倍率。1 はモデルの解像度ちょうど。2・3 は同じ構図を縦横 2・3 倍の画素数で書き出す。
+ * watchOS 11 以降の写真文字盤は画像を拡大して表示することがあり、その際の粗さを抑えるために使う。
+ */
+export type ExportScale = 1 | 2 | 3;
+export const EXPORT_SCALES: readonly ExportScale[] = [1, 2, 3];
+export const DEFAULT_EXPORT_SCALE: ExportScale = 1;
+
 export type EditorImage = { width: number; height: number; filename: string };
 
 /** 要件定義 11.1。画像リソース（ImageBitmap 等）は含めない（11.2） */
@@ -46,7 +54,7 @@ export type EditorState = {
 	 */
 	transformOutput: Size | null;
 	background: { type: 'solid' | 'blur'; color: string };
-	exportOptions: { format: ExportFormat; quality: number };
+	exportOptions: { format: ExportFormat; quality: number; scale: ExportScale };
 };
 
 export type EditorAction =
@@ -59,6 +67,7 @@ export type EditorAction =
 	| { type: 'SET_ZOOM'; scale: number; anchor?: Point }
 	| { type: 'SET_BACKGROUND'; color: string }
 	| { type: 'SET_EXPORT_FORMAT'; format: ExportFormat; quality?: number }
+	| { type: 'SET_EXPORT_SCALE'; scale: ExportScale }
 	| { type: 'FIT_IMAGE' }
 	| { type: 'RESET_TRANSFORM' }
 	| { type: 'CLEAR_IMAGE' };
@@ -164,7 +173,7 @@ export function createInitialEditorState(models: readonly WatchModel[]): EditorS
 		transform: IDENTITY_TRANSFORM,
 		transformOutput: null,
 		background: { type: 'solid', color: DEFAULT_BACKGROUND_COLOR },
-		exportOptions: { format: 'png', quality: DEFAULT_JPEG_QUALITY },
+		exportOptions: { format: 'png', quality: DEFAULT_JPEG_QUALITY, scale: DEFAULT_EXPORT_SCALE },
 	};
 }
 
@@ -274,6 +283,7 @@ export function createEditorReducer(models: readonly WatchModel[]) {
 				return {
 					...state,
 					exportOptions: {
+						...state.exportOptions,
 						format: action.format,
 						quality:
 							action.quality === undefined
@@ -281,6 +291,11 @@ export function createEditorReducer(models: readonly WatchModel[]) {
 								: clampQuality(action.quality),
 					},
 				};
+			case 'SET_EXPORT_SCALE':
+				if (!EXPORT_SCALES.includes(action.scale) || action.scale === state.exportOptions.scale) {
+					return state;
+				}
+				return { ...state, exportOptions: { ...state.exportOptions, scale: action.scale } };
 			case 'FIT_IMAGE':
 			case 'RESET_TRANSFORM':
 				// フィット（6.5）とリセット（6.6）はどちらも現在モードの基準倍率で中央配置する。

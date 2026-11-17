@@ -1,8 +1,9 @@
 import type { ImageTransform, Size } from '@/features/editor/geometry';
-import type { ExportFormat } from '@/features/editor/reducer';
+import type { ExportFormat, ExportScale } from '@/features/editor/reducer';
 import { renderImage } from '@/features/editor/renderer';
 import { ExportError } from './errors';
 import { MIME_TYPES } from './filename';
+import { isExportScaleAvailable } from './scale';
 
 export type ExportSnapshot = {
 	source: CanvasImageSource;
@@ -13,6 +14,8 @@ export type ExportSnapshot = {
 	format: ExportFormat;
 	/** JPEG の品質（0.5〜1.0） */
 	quality: number;
+	/** 出力倍率。output（Output 座標系）× scale の画素数で書き出す */
+	scale: ExportScale;
 };
 
 function isValidOutput(output: Size): boolean {
@@ -33,7 +36,7 @@ export async function generateExportBlob(
 	snapshot: ExportSnapshot,
 	createCanvas: () => HTMLCanvasElement = () => document.createElement('canvas'),
 ): Promise<Blob> {
-	if (!isValidOutput(snapshot.output)) {
+	if (!isValidOutput(snapshot.output) || !isExportScaleAvailable(snapshot.output, snapshot.scale)) {
 		throw new ExportError('invalid-output');
 	}
 	const canvas = createCanvas();
@@ -54,7 +57,8 @@ export async function generateExportBlob(
 					transform: snapshot.transform,
 					backgroundColor: snapshot.backgroundColor,
 				},
-				1,
+				// 構図は Output 座標系のまま、プレビューと同じレンダラーで画素数だけ増やす
+				snapshot.scale,
 			);
 		} catch (error) {
 			throw error instanceof RangeError

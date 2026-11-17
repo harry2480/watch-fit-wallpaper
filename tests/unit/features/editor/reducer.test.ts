@@ -53,7 +53,7 @@ describe('初期状態', () => {
 		expect(state.fitMode).toBe('cover');
 		expect(state.image).toBeNull();
 		expect(state.background).toEqual({ type: 'solid', color: '#000000' });
-		expect(state.exportOptions).toEqual({ format: 'png', quality: 0.92 });
+		expect(state.exportOptions).toEqual({ format: 'png', quality: 0.92, scale: 1 });
 		expect(canExport(state, models)).toBe(false);
 	});
 
@@ -314,6 +314,7 @@ describe('背景色・出力形式', () => {
 		expect(run({ type: 'SET_EXPORT_FORMAT', format: 'jpeg', quality }).exportOptions).toEqual({
 			format: 'jpeg',
 			quality: expected,
+			scale: 1,
 		});
 	});
 
@@ -322,7 +323,24 @@ describe('背景色・出力形式', () => {
 			{ type: 'SET_EXPORT_FORMAT', format: 'jpeg', quality: 0.7 },
 			{ type: 'SET_EXPORT_FORMAT', format: 'png' },
 		);
-		expect(state.exportOptions).toEqual({ format: 'png', quality: 0.7 });
+		expect(state.exportOptions).toEqual({ format: 'png', quality: 0.7, scale: 1 });
+	});
+
+	it('出力倍率は 1・2・3 だけを受け付け、形式を変えても維持する', () => {
+		expect(run({ type: 'SET_EXPORT_SCALE', scale: 3 }).exportOptions.scale).toBe(3);
+		expect(run({ type: 'SET_EXPORT_SCALE', scale: 4 as unknown as 1 }).exportOptions.scale).toBe(1);
+		const state = run(
+			{ type: 'SET_EXPORT_SCALE', scale: 2 },
+			{ type: 'SET_EXPORT_FORMAT', format: 'jpeg', quality: 0.8 },
+		);
+		expect(state.exportOptions).toEqual({ format: 'jpeg', quality: 0.8, scale: 2 });
+	});
+
+	it('出力倍率を変えても構図（Output 座標系の transform）は変わらない', () => {
+		const loaded = run({ type: 'LOAD_IMAGE', image });
+		const scaled = reducer(loaded, { type: 'SET_EXPORT_SCALE', scale: 3 });
+		expect(scaled.transform).toEqual(loaded.transform);
+		expect(scaled.transformOutput).toEqual(loaded.transformOutput);
 	});
 });
 

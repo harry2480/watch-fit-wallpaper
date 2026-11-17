@@ -17,6 +17,7 @@ import {
 	getZoomRange,
 	relativeToAbsoluteScale,
 } from '@/features/editor/reducer';
+import { effectiveExportScale } from '@/features/export/scale';
 import { exportVersion } from '@/features/export/version';
 import { findWatchModel } from '@/features/watch/models';
 import { useImageEditor } from '@/hooks/useImageEditor';
@@ -36,6 +37,9 @@ export function App() {
 	// 編集操作は、画像があり出力サイズが有効なときだけ行える（10.3）
 	const editable = hasImage && editor.canExport;
 	const zoomRange = getZoomRange(state, models);
+	const exportScale = editor.output
+		? effectiveExportScale(editor.output, state.exportOptions.scale)
+		: state.exportOptions.scale;
 	const step = {
 		x: frameOutput.width * MOVE_STEP_RATIO,
 		y: frameOutput.height * MOVE_STEP_RATIO,
@@ -181,6 +185,7 @@ export function App() {
 							backgroundColor: state.background.color,
 							format: state.exportOptions.format,
 							quality: state.exportOptions.quality,
+							scale: exportScale,
 						})}
 						fileId={
 							state.modelId === CUSTOM_MODEL_ID && editor.output
@@ -192,6 +197,9 @@ export function App() {
 						onFormatChange={(format, quality) =>
 							dispatch({ type: 'SET_EXPORT_FORMAT', format, quality })
 						}
+						output={editor.output}
+						scale={state.exportOptions.scale}
+						onScaleChange={(scale) => dispatch({ type: 'SET_EXPORT_SCALE', scale })}
 						getSnapshot={() => {
 							if (!decoded || !editor.output || !state.image) return null;
 							// 確定前の操作も含めて、表示中の構図で出力する（9.4）
@@ -204,6 +212,7 @@ export function App() {
 								backgroundColor: state.background.color,
 								format: state.exportOptions.format,
 								quality: state.exportOptions.quality,
+								scale: exportScale,
 							};
 							return {
 								snapshot,

@@ -3,6 +3,12 @@ import { downloadBlob } from '@/features/export/download';
 import { EXPORT_ERROR_MESSAGES, ExportError } from '@/features/export/errors';
 import { exportFilename } from '@/features/export/filename';
 import { type ExportSnapshot, generateExportBlob } from '@/features/export/generate';
+import {
+	effectiveExportScale,
+	isExportScaleAvailable,
+	MAX_EXPORT_PIXELS,
+	scaledOutputSize,
+} from '@/features/export/scale';
 import { canShareFile, shareFile } from '@/features/export/share';
 import { exportVersion } from '@/features/export/version';
 
@@ -23,6 +29,41 @@ describe('exportFilename', () => {
 			'watchfit-custom-500-600-20261117-203000.png',
 		);
 		expect(exportFilename('', 'png', date)).toBe('watchfit-custom-20261117-203000.png');
+	});
+
+	it('2 倍以上では倍率を付ける。1 倍は従来どおり', () => {
+		const date = new Date(2026, 10, 17, 20, 30, 0);
+		expect(exportFilename('se3-44mm', 'png', date, 1)).toBe(
+			'watchfit-se3-44mm-20261117-203000.png',
+		);
+		expect(exportFilename('se3-44mm', 'jpeg', date, 3)).toBe(
+			'watchfit-se3-44mm-3x-20261117-203000.jpg',
+		);
+	});
+});
+
+describe('出力倍率の上限', () => {
+	it('倍率を掛けた画素数を返す', () => {
+		expect(scaledOutputSize({ width: 368, height: 448 }, 3)).toEqual({ width: 1104, height: 1344 });
+	});
+
+	it('Apple Watch のモデル解像度ではどの倍率も使える', () => {
+		for (const scale of [1, 2, 3] as const) {
+			expect(isExportScaleAvailable({ width: 502, height: 410 }, scale)).toBe(true);
+		}
+	});
+
+	it('上限を超える倍率は使えず、使える最大の倍率に下げる', () => {
+		// 2048×2048 は 2 倍で 4096×4096（上限ちょうど）、3 倍で超える
+		const output = { width: 2048, height: 2048 };
+		expect(scaledOutputSize(output, 2).width * scaledOutputSize(output, 2).height).toBe(
+			MAX_EXPORT_PIXELS,
+		);
+		expect(isExportScaleAvailable(output, 2)).toBe(true);
+		expect(isExportScaleAvailable(output, 3)).toBe(false);
+		expect(effectiveExportScale(output, 3)).toBe(2);
+		expect(effectiveExportScale({ width: 2048, height: 2049 }, 3)).toBe(1);
+		expect(effectiveExportScale(output, 1)).toBe(1);
 	});
 });
 
@@ -117,9 +158,10 @@ describe('generateExportBlob', () => {
 		backgroundColor: '#000000',
 		format: 'jpeg',
 		quality: 0.8,
+		scale: 1,
 	};
 
-	function fakeCanvas(blob: Blob | null) {
+	function fakeCanvas(blob: Blob | null, expectedSize: [number, number] = [416, 496]) {
 		const canvas = {
 			width: 0,
 			height: 0,
@@ -134,7 +176,7 @@ describe('generateExportBlob', () => {
 				drawImage: vi.fn(),
 			}),
 			toBlob: vi.fn((callback: BlobCallback) => {
-				expect([canvas.width, canvas.height]).toEqual([416, 496]);
+				expect([canvas.width, canvas.height]).toEqual(expectedSize);
 				callback(blob);
 			}),
 		};
@@ -147,6 +189,21 @@ describe('generateExportBlob', () => {
 		expect(blob.type).toBe('image/jpeg');
 		expect(canvas.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.8);
 		expect([canvas.width, canvas.height]).toEqual([0, 0]);
+	});
+
+	it('出力倍率の分だけ画素数を増やして描画する', async () => {
+		const canvas = fakeCanvas(new Blob(['png'], { type: 'image/png' }), [1248, 1488]);
+		await generateExportBlob(
+			{ ...snapshot, format: 'png', scale: 3 },
+			() => canvas as unknown as HTMLCanvasElement,
+		);
+		expect(canvas.toBlob).toHaveBeenCalledTimes(1);
+	});
+
+	it('上限を超える倍率は invalid-output', async () => {
+		await expect(
+			generateExportBlob({ ...snapshot, output: { width: 2048, height: 2048 }, scale: 3 }),
+		).rejects.toMatchObject({ code: 'invalid-output' });
 	});
 
 	it('PNG では品質を渡さない', async () => {
@@ -216,6 +273,7 @@ describe('exportVersion', () => {
 		backgroundColor: '#000000',
 		format: 'png' as const,
 		quality: 0.92,
+		scale: 1 as const,
 	};
 
 	it('同じ内容なら同じ値、出力内容が変われば違う値になる', () => {
@@ -228,6 +286,7 @@ describe('exportVersion', () => {
 			{ ...base, backgroundColor: '#ffffff' },
 			{ ...base, format: 'jpeg' as const },
 			{ ...base, quality: 0.8 },
+			{ ...base, scale: 2 as const },
 		]) {
 			expect(exportVersion(changed)).not.toBe(exportVersion(base));
 		}
