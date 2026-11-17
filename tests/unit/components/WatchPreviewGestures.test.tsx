@@ -1,14 +1,16 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WatchPreview } from '@/components/editor/WatchPreview';
 import { centeredTransform, type ImageTransform } from '@/features/editor/geometry';
+import { contentRect } from '@/hooks/usePointerGestures';
 
 const output = { width: 416, height: 496 };
 const image = { width: 1000, height: 1000 };
 
 function setup(onTransformCommit = vi.fn()) {
 	const transform = centeredTransform('contain', image, output);
-	render(
+	const utils = render(
 		<WatchPreview
 			source={{} as CanvasImageSource}
 			sourceSize={image}
@@ -34,10 +36,29 @@ function setup(onTransformCommit = vi.fn()) {
 		}) as DOMRect;
 	canvas.setPointerCapture = vi.fn();
 	canvas.releasePointerCapture = vi.fn();
-	return { canvas, transform, onTransformCommit };
+	const rerender = (next: ImageTransform) =>
+		utils.rerender(
+			<WatchPreview
+				source={{} as CanvasImageSource}
+				sourceSize={image}
+				output={output}
+				transform={next}
+				backgroundColor="#000000"
+				label="プレビュー"
+				interaction={{ fitMode: 'contain', onTransformCommit }}
+			/>,
+		);
+	return { canvas, transform, onTransformCommit, rerender };
 }
 
-function pointer(type: string, canvas: HTMLElement, id: number, x: number, y: number) {
+function pointer(
+	type: string,
+	canvas: HTMLElement,
+	id: number,
+	x: number,
+	y: number,
+	isPrimary = false,
+) {
 	fireEvent(
 		canvas,
 		Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
@@ -46,8 +67,27 @@ function pointer(type: string, canvas: HTMLElement, id: number, x: number, y: nu
 			button: 0,
 			clientX: x,
 			clientY: y,
+			isPrimary,
 		}),
 	);
+}
+
+function wheel(canvas: HTMLElement, deltaY: number, x: number, y: number) {
+	const event = new WheelEvent('wheel', {
+		deltaY,
+		deltaMode: 0,
+		clientX: x,
+		clientY: y,
+		bubbles: true,
+		cancelable: true,
+	});
+	canvas.dispatchEvent(event);
+	return event;
+}
+
+/** Output 座標 p にある画像上の点（Source 座標） */
+function sourcePointAt(t: ImageTransform, p: { x: number; y: number }) {
+	return { x: (p.x - t.centerX) / t.scale, y: (p.y - t.centerY) / t.scale };
 }
 
 describe('WatchPreview の操作', () => {
@@ -83,34 +123,124 @@ describe('WatchPreview の操作', () => {
 		expect(onTransformCommit).toHaveBeenCalledTimes(1);
 	});
 
-	it('2 本指のピンチで拡大し、両方の指を離すと確定する', () => {
+	it('2 本指のピンチで拡大し、開始時の中心にあった点が現在の中心に来る', () => {
 		const { canvas, transform, onTransformCommit } = setup();
-		pointer('pointerdown', canvas, 1, 100, 140);
+		pointer('pointerdown', canvas, 1, 100, 140, true);
 		pointer('pointerdown', canvas, 2, 120, 140);
-		pointer('pointermove', canvas, 2, 140, 140);
-		pointer('pointerup', canvas, 2, 140, 140);
+		pointer('pointermove', canvas, 2, 140, 150);
+		pointer('pointerup', canvas, 2, 140, 150);
 		expect(onTransformCommit).not.toHaveBeenCalled();
 		pointer('pointerup', canvas, 1, 100, 140);
 		const committed = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
-		expect(committed.scale).toBeCloseTo(transform.scale * 2, 9);
+		const startDistance = 20;
+		const currentDistance = Math.hypot(40, 10);
+		expect(committed.scale).toBeCloseTo((transform.scale * currentDistance) / startDistance, 9);
+		// 開始時の中心 (110,140) → Output (200,240)、現在の中心 (120,145) → Output (220,250)
+		const before = sourcePointAt(transform, { x: 200, y: 240 });
+		const after = sourcePointAt(committed, { x: 220, y: 250 });
+		expect(after.x).toBeCloseTo(before.x, 9);
+		expect(after.y).toBeCloseTo(before.y, 9);
 	});
 
-	it('ホイールはスクロールを止めてズームし、止まってから確定する', () => {
+	it('ピンチ中に 1 本離して残りの指でドラッグを続けても位置が飛ばない', () => {
+		const { canvas, onTransformCommit } = setup();
+		pointer('pointerdown', canvas, 1, 100, 140, true);
+		pointer('pointerdown', canvas, 2, 120, 140);
+		pointer('pointermove', canvas, 2, 140, 140);
+		pointer('pointerup', canvas, 2, 140, 140);
+		pointer('pointerup', canvas, 1, 100, 140);
+		const afterPinch = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
+		onTransformCommit.mockClear();
+		// 別の操作: ピンチ → 1 本離す → 動かさずに離す
+		pointer('pointerdown', canvas, 3, 100, 140, true);
+		pointer('pointerdown', canvas, 4, 120, 140);
+		pointer('pointerup', canvas, 4, 120, 140);
+		pointer('pointermove', canvas, 3, 100, 140);
+		pointer('pointerup', canvas, 3, 100, 140);
+		const committed = onTransformCommit.mock.calls[0]?.[0] as ImageTransform | undefined;
+		if (committed) {
+			expect(committed.scale).toBeCloseTo(afterPinch.scale, 9);
+		}
+	});
+
+	it('終了イベントを取りこぼした指が残っていても、次の 1 本指はドラッグになり確定する', () => {
 		const { canvas, transform, onTransformCommit } = setup();
-		const wheel = new WheelEvent('wheel', {
-			deltaY: -100,
-			deltaMode: 0,
-			clientX: 114,
-			clientY: 144,
-			bubbles: true,
-			cancelable: true,
-		});
-		canvas.dispatchEvent(wheel);
-		expect(wheel.defaultPrevented).toBe(true);
+		pointer('pointerdown', canvas, 1, 100, 100, true);
+		// id=1 の pointerup が来ないまま、新しい操作が始まる
+		onTransformCommit.mockClear();
+		pointer('pointerdown', canvas, 2, 100, 100, true);
+		pointer('pointermove', canvas, 2, 110, 100);
+		pointer('pointerup', canvas, 2, 110, 100);
+		const committed = onTransformCommit.mock.calls.at(-1)?.[0] as ImageTransform;
+		expect(committed.scale).toBe(transform.scale);
+		expect(committed.centerX).toBeCloseTo(transform.centerX + 20, 9);
+	});
+
+	it('pointerup の後の lostpointercapture で二重に確定しない', () => {
+		const { canvas, onTransformCommit } = setup();
+		pointer('pointerdown', canvas, 1, 100, 100, true);
+		pointer('pointermove', canvas, 1, 110, 100);
+		pointer('pointerup', canvas, 1, 110, 100);
+		pointer('lostpointercapture', canvas, 1, 110, 100);
+		expect(onTransformCommit).toHaveBeenCalledTimes(1);
+	});
+
+	it('ボタンを押さないマウス移動では何もしない', () => {
+		const { canvas, onTransformCommit } = setup();
+		pointer('pointermove', canvas, 1, 110, 100);
+		vi.advanceTimersByTime(500);
+		expect(onTransformCommit).not.toHaveBeenCalled();
+	});
+
+	it('devicePixelRatio に関係なく CSS px で変換する', () => {
+		const original = window.devicePixelRatio;
+		Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+		try {
+			const { canvas, transform, onTransformCommit } = setup();
+			pointer('pointerdown', canvas, 1, 100, 100, true);
+			pointer('pointermove', canvas, 1, 110, 100);
+			pointer('pointerup', canvas, 1, 110, 100);
+			const committed = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
+			expect(committed.centerX).toBeCloseTo(transform.centerX + 20, 9);
+		} finally {
+			Object.defineProperty(window, 'devicePixelRatio', { value: original, configurable: true });
+		}
+	});
+
+	it('ホイールはスクロールを止め、カーソル位置を中心にズームし、止まってから確定する', () => {
+		const { canvas, transform, onTransformCommit } = setup();
+		// クライアント (60, 70) → Output (100, 100)
+		const event = wheel(canvas, -100, 60, 70);
+		expect(event.defaultPrevented).toBe(true);
 		expect(onTransformCommit).not.toHaveBeenCalled();
 		vi.advanceTimersByTime(200);
 		const committed = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
 		expect(committed.scale).toBeGreaterThan(transform.scale);
+		const before = sourcePointAt(transform, { x: 100, y: 100 });
+		const after = sourcePointAt(committed, { x: 100, y: 100 });
+		expect(after.x).toBeCloseTo(before.x, 9);
+		expect(after.y).toBeCloseTo(before.y, 9);
+	});
+
+	it('ドラッグ中のホイールはスクロールだけ止めて無視する', () => {
+		const { canvas, transform, onTransformCommit } = setup();
+		pointer('pointerdown', canvas, 1, 100, 100, true);
+		expect(wheel(canvas, -100, 60, 70).defaultPrevented).toBe(true);
+		vi.advanceTimersByTime(500);
+		expect(onTransformCommit).not.toHaveBeenCalled();
+		pointer('pointerup', canvas, 1, 100, 100);
+		vi.advanceTimersByTime(500);
+		for (const [committed] of onTransformCommit.mock.calls) {
+			expect((committed as ImageTransform).scale).toBe(transform.scale);
+		}
+	});
+
+	it('確定待ちの間に親から別の構図が届いたら、古い操作を確定しない', () => {
+		const { canvas, transform, onTransformCommit, rerender } = setup();
+		wheel(canvas, -100, 60, 70);
+		rerender({ ...transform, centerX: transform.centerX + 1 });
+		vi.advanceTimersByTime(500);
+		expect(onTransformCommit).not.toHaveBeenCalled();
 	});
 
 	it('マウスの右ボタンでは操作しない', () => {
@@ -132,5 +262,60 @@ describe('WatchPreview の操作', () => {
 	it('プレビュー領域ではブラウザのタッチ操作を止める', () => {
 		const { canvas } = setup();
 		expect(canvas.className).toContain('touch-none');
+	});
+});
+
+describe('contentRect', () => {
+	it('border と padding を除いた矩形を返す', () => {
+		const element = document.createElement('div');
+		element.style.padding = '4px 6px';
+		element.style.borderWidth = '2px';
+		element.style.borderStyle = 'solid';
+		element.getBoundingClientRect = () =>
+			({ left: 10, top: 20, width: 120, height: 80 }) as DOMRect;
+		document.body.append(element);
+		expect(contentRect(element)).toEqual({ left: 18, top: 26, width: 104, height: 68 });
+		element.remove();
+	});
+});
+
+describe('StrictMode での描画', () => {
+	it('再マウント後もプレビューを描画する', async () => {
+		const fillRect = vi.fn();
+		const getContext = vi
+			.spyOn(HTMLCanvasElement.prototype, 'getContext')
+			.mockImplementation(function (this: HTMLCanvasElement) {
+				return {
+					canvas: this,
+					setTransform: vi.fn(),
+					fillRect,
+					save: vi.fn(),
+					restore: vi.fn(),
+					scale: vi.fn(),
+					translate: vi.fn(),
+					drawImage: vi.fn(),
+				} as unknown as CanvasRenderingContext2D;
+			} as never);
+		const rect = vi
+			.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+			.mockReturnValue({ left: 0, top: 0, width: 208, height: 248 } as DOMRect);
+		try {
+			render(
+				<StrictMode>
+					<WatchPreview
+						source={{} as CanvasImageSource}
+						sourceSize={image}
+						output={output}
+						transform={centeredTransform('cover', image, output)}
+						backgroundColor="#000000"
+						label="プレビュー"
+					/>
+				</StrictMode>,
+			);
+			await waitFor(() => expect(fillRect).toHaveBeenCalled());
+		} finally {
+			getContext.mockRestore();
+			rect.mockRestore();
+		}
 	});
 });

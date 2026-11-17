@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef } from 'react';
+import { type RefObject, useCallback, useEffect, useRef } from 'react';
 import { panTransform, zoomTransformAt } from '@/features/editor/constraints';
 import type { FitMode, ImageTransform, Point, Size } from '@/features/editor/geometry';
 import {
@@ -14,7 +14,7 @@ import {
 } from '@/features/editor/gestures';
 
 export type GestureContext = {
-	/** 確定済みの Transform */
+	/** 確定済み（または表示中）の Transform */
 	transform: ImageTransform;
 	fitMode: FitMode;
 	image: Size;
@@ -34,15 +34,40 @@ export type PointerGestureOptions = {
 const WHEEL_COMMIT_DELAY_MS = 150;
 
 /**
+ * 実際に描画されている矩形（content-box、CSS px）。
+ * getBoundingClientRect は border・padding を含むため、それを除く（要件定義 7.8）。
+ */
+export function contentRect(element: HTMLElement): ViewportRect {
+	const rect = element.getBoundingClientRect();
+	const style = getComputedStyle(element);
+	const px = (value: string) => Number.parseFloat(value) || 0;
+	const left = px(style.borderLeftWidth) + px(style.paddingLeft);
+	const right = px(style.borderRightWidth) + px(style.paddingRight);
+	const top = px(style.borderTopWidth) + px(style.paddingTop);
+	const bottom = px(style.borderBottomWidth) + px(style.paddingBottom);
+	return {
+		left: rect.left + left,
+		top: rect.top + top,
+		width: rect.width - left - right,
+		height: rect.height - top - bottom,
+	};
+}
+
+/** Safari の GestureEvent（標準の型定義に無い） */
+type SafariGestureEvent = Event & { scale: number; clientX: number; clientY: number };
+
+/**
  * ドラッグ・ピンチ・ホイールによる画像操作（要件定義 7.7〜7.10）。
  * Pointer Events と pointer capture を使い、要素外に指が出ても操作を続ける。
+ * 戻り値の cancel() は、進行中の操作と確定待ちを確定せずに破棄する（外部から状態が変わったとき用）。
  */
 export function usePointerGestures(
 	elementRef: RefObject<HTMLElement | null>,
 	options: PointerGestureOptions,
-): void {
+): { cancel: () => void } {
 	const optionsRef = useRef(options);
 	optionsRef.current = options;
+	const cancelRef = useRef<() => void>(() => {});
 
 	useEffect(() => {
 		const element = elementRef.current;
@@ -55,6 +80,7 @@ export function usePointerGestures(
 		let drag: { start: Point; transform: ImageTransform } | null = null;
 		let pinch: PinchStart | null = null;
 		let wheelTimer: ReturnType<typeof setTimeout> | undefined;
+		let trackpad: { transform: ImageTransform } | null = null;
 
 		const context = () => optionsRef.current.getContext();
 
@@ -63,26 +89,36 @@ export function usePointerGestures(
 			optionsRef.current.onPreview(transform);
 		};
 
-		const commit = () => {
-			if (live) {
-				optionsRef.current.onCommit(live);
-			}
+		const reset = () => {
+			pointers.clear();
+			drag = null;
+			pinch = null;
+			trackpad = null;
 			live = null;
+			clearTimeout(wheelTimer);
+			wheelTimer = undefined;
+		};
+
+		const commit = () => {
+			const value = live;
+			reset();
+			if (value) {
+				optionsRef.current.onCommit(value);
+			}
 		};
 
 		const flushWheel = () => {
 			if (wheelTimer !== undefined) {
-				clearTimeout(wheelTimer);
-				wheelTimer = undefined;
 				commit();
 			}
 		};
 
+		cancelRef.current = reset;
+
 		/** 指の本数が変わったら、現在の表示状態を起点に操作を組み立て直す */
 		const restart = (ctx: GestureContext) => {
 			const base = live ?? ctx.transform;
-			const points = [...pointers.values()];
-			const [a, b] = points;
+			const [a, b] = [...pointers.values()];
 			if (a && b) {
 				const pa = clientPointToOutput(a, rect, ctx.output);
 				const pb = clientPointToOutput(b, rect, ctx.output);
@@ -100,10 +136,18 @@ export function usePointerGestures(
 				return;
 			}
 			flushWheel();
+			// 新しい操作の最初の指なら、終了イベントを取りこぼして残ったポインタを捨てる
+			if (event.isPrimary && pointers.size > 0) {
+				commit();
+			}
 			event.preventDefault();
-			element.setPointerCapture?.(event.pointerId);
+			try {
+				element.setPointerCapture(event.pointerId);
+			} catch {
+				// キャプチャできなくても操作は続ける
+			}
 			pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-			rect = element.getBoundingClientRect();
+			rect = contentRect(element);
 			restart(ctx);
 		};
 
@@ -113,6 +157,7 @@ export function usePointerGestures(
 			}
 			const ctx = context();
 			if (!ctx) {
+				reset();
 				return;
 			}
 			pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -145,13 +190,14 @@ export function usePointerGestures(
 			if (!pointers.delete(event.pointerId)) {
 				return;
 			}
-			element.releasePointerCapture?.(event.pointerId);
+			try {
+				element.releasePointerCapture(event.pointerId);
+			} catch {
+				// すでに解放済み
+			}
 			const ctx = context();
 			if (pointers.size === 0 || !ctx) {
 				// pointercancel を含め、表示中の状態で確定して操作を安全に終える
-				pointers.clear();
-				drag = null;
-				pinch = null;
 				commit();
 				return;
 			}
@@ -165,11 +211,15 @@ export function usePointerGestures(
 			}
 			// 編集領域上でズームを扱うときだけ、ブラウザのスクロールを止める
 			event.preventDefault();
+			// ドラッグ・ピンチ中のホイールは無視する（指の操作の確定と競合させない）
+			if (pointers.size > 0) {
+				return;
+			}
 			const base = live ?? ctx.transform;
 			const deltaPx = normalizeWheelDelta(event.deltaY, event.deltaMode, window.innerHeight);
 			const anchor = clientPointToOutput(
 				{ x: event.clientX, y: event.clientY },
-				element.getBoundingClientRect(),
+				contentRect(element),
 				ctx.output,
 			);
 			preview(
@@ -183,18 +233,58 @@ export function usePointerGestures(
 				),
 			);
 			clearTimeout(wheelTimer);
-			wheelTimer = setTimeout(() => {
-				wheelTimer = undefined;
-				commit();
-			}, WHEEL_COMMIT_DELAY_MS);
+			wheelTimer = setTimeout(commit, WHEEL_COMMIT_DELAY_MS);
 		};
 
+		// Safari: ページ全体のピンチズームを止める。トラックパッドのピンチ（ポインタ無し）はズームに使う
+		const onGestureStart = (event: Event) => {
+			event.preventDefault();
+			const ctx = context();
+			if (ctx && pointers.size === 0) {
+				flushWheel();
+				trackpad = { transform: live ?? ctx.transform };
+			}
+		};
+		const onGestureChange = (event: Event) => {
+			event.preventDefault();
+			const ctx = context();
+			const gesture = event as SafariGestureEvent;
+			if (!ctx || !trackpad || pointers.size > 0 || !Number.isFinite(gesture.scale)) {
+				return;
+			}
+			const anchor = clientPointToOutput(
+				{ x: gesture.clientX, y: gesture.clientY },
+				contentRect(element),
+				ctx.output,
+			);
+			preview(
+				zoomTransformAt(
+					trackpad.transform,
+					trackpad.transform.scale * gesture.scale,
+					anchor,
+					ctx.fitMode,
+					ctx.image,
+					ctx.output,
+				),
+			);
+		};
+		const onGestureEnd = (event: Event) => {
+			event.preventDefault();
+			if (trackpad) {
+				commit();
+			}
+		};
+
+		const nonPassive = { passive: false } as const;
 		element.addEventListener('pointerdown', onPointerDown);
 		element.addEventListener('pointermove', onPointerMove);
 		element.addEventListener('pointerup', onPointerEnd);
 		element.addEventListener('pointercancel', onPointerEnd);
 		element.addEventListener('lostpointercapture', onPointerEnd);
-		element.addEventListener('wheel', onWheel, { passive: false });
+		element.addEventListener('wheel', onWheel, nonPassive);
+		element.addEventListener('gesturestart', onGestureStart, nonPassive);
+		element.addEventListener('gesturechange', onGestureChange, nonPassive);
+		element.addEventListener('gestureend', onGestureEnd, nonPassive);
 		return () => {
 			element.removeEventListener('pointerdown', onPointerDown);
 			element.removeEventListener('pointermove', onPointerMove);
@@ -202,7 +292,15 @@ export function usePointerGestures(
 			element.removeEventListener('pointercancel', onPointerEnd);
 			element.removeEventListener('lostpointercapture', onPointerEnd);
 			element.removeEventListener('wheel', onWheel);
-			flushWheel();
+			element.removeEventListener('gesturestart', onGestureStart);
+			element.removeEventListener('gesturechange', onGestureChange);
+			element.removeEventListener('gestureend', onGestureEnd);
+			// アンマウント時は確定せずに破棄する
+			reset();
+			cancelRef.current = () => {};
 		};
 	}, [elementRef]);
+
+	const cancel = useCallback(() => cancelRef.current(), []);
+	return { cancel };
 }
