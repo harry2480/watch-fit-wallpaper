@@ -15,7 +15,9 @@ import {
 	type ImageTransform,
 	isValidSize,
 	type Point,
+	relativeZoom,
 	type Size,
+	scaleRange,
 } from './geometry';
 
 /** カスタム解像度を選んでいることを表す modelId */
@@ -95,7 +97,34 @@ export function getRelativeZoom(state: EditorState, models: readonly WatchModel[
 	if (!state.image || !output) {
 		return null;
 	}
-	return state.transform.scale / baseScale(state.fitMode, state.image, output);
+	return relativeZoom(state.transform, state.fitMode, state.image, output);
+}
+
+/** スライダーの範囲（相対倍率）。Cover は 1〜4、Contain は 0.25〜4（要件定義 6.2・6.3） */
+export function getZoomRange(
+	state: EditorState,
+	models: readonly WatchModel[],
+): { min: number; max: number } {
+	const output = getPreviewOutputSize(state, models);
+	if (!state.image || !output) {
+		return { min: 1, max: 4 };
+	}
+	const range = scaleRange(state.fitMode, state.image, output);
+	const base = baseScale(state.fitMode, state.image, output);
+	return { min: range.min / base, max: range.max / base };
+}
+
+/** delta 方向に実際に動かせるか（Cover で画像端に達していれば false）。方向ボタンの有効・無効に使う */
+export function canPan(state: EditorState, models: readonly WatchModel[], delta: Point): boolean {
+	const output = getOutputSize(state, models);
+	if (!state.image || !output) {
+		return false;
+	}
+	const moved = panTransform(state.transform, delta, state.fitMode, state.image, output);
+	return (
+		Math.abs(moved.centerX - state.transform.centerX) > 1e-9 ||
+		Math.abs(moved.centerY - state.transform.centerY) > 1e-9
+	);
 }
 
 /** 相対倍率を SET_ZOOM に渡す絶対倍率に変換する。画像が無ければ null */

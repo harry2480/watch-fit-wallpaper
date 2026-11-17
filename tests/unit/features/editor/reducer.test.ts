@@ -3,6 +3,7 @@ import { centeredTransform, containScale, coverScale } from '@/features/editor/g
 import {
 	CUSTOM_MODEL_ID,
 	canExport,
+	canPan,
 	createEditorReducer,
 	createInitialEditorState,
 	type EditorAction,
@@ -10,6 +11,7 @@ import {
 	getOutputSize,
 	getPreviewOutputSize,
 	getRelativeZoom,
+	getZoomRange,
 	relativeToAbsoluteScale,
 } from '@/features/editor/reducer';
 import { loadWatchModels } from '@/features/watch/models';
@@ -371,5 +373,33 @@ describe('スライダー用の相対倍率', () => {
 		const state = createInitialEditorState(models);
 		expect(getRelativeZoom(state, models)).toBeNull();
 		expect(relativeToAbsoluteScale(state, models, 1)).toBeNull();
+	});
+});
+
+describe('getZoomRange / canPan', () => {
+	it('倍率範囲はモードごとに Cover 1〜4、Contain 0.25〜4', () => {
+		const cover = run({ type: 'LOAD_IMAGE', image });
+		expect(getZoomRange(cover, models).min).toBeCloseTo(1, 12);
+		expect(getZoomRange(cover, models).max).toBeCloseTo(4, 12);
+		const contain = reducer(cover, { type: 'SET_FIT_MODE', fitMode: 'contain' });
+		expect(getZoomRange(contain, models).min).toBeCloseTo(0.25, 12);
+	});
+
+	it('Cover で画像端に達した方向には動かせない', () => {
+		const state = run({ type: 'LOAD_IMAGE', image });
+		expect(canPan(state, models, { x: 0, y: 10 })).toBe(false);
+		expect(canPan(state, models, { x: 10, y: 0 })).toBe(true);
+		const atRight = reducer(state, { type: 'PAN_BY', delta: { x: 1e6, y: 0 } });
+		expect(canPan(atRight, models, { x: 10, y: 0 })).toBe(false);
+		expect(canPan(atRight, models, { x: -10, y: 0 })).toBe(true);
+	});
+
+	it('画像が無い・出力不可なら動かせない', () => {
+		expect(canPan(createInitialEditorState(models), models, { x: 1, y: 0 })).toBe(false);
+		const invalid = run(
+			{ type: 'LOAD_IMAGE', image },
+			{ type: 'SET_CUSTOM_RESOLUTION', width: 0, height: 0 },
+		);
+		expect(canPan(invalid, models, { x: 1, y: 0 })).toBe(false);
 	});
 });
