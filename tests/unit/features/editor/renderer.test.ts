@@ -78,4 +78,34 @@ describe('renderImage の描画順序', () => {
 			'restore()',
 		]);
 	});
+
+	it('Canvas サイズの丸めで縦横の比率がずれる分を描画行列で補正する', () => {
+		const scales: number[][] = [];
+		const ctx = {
+			canvas: { width: 0, height: 0 },
+			setTransform: vi.fn(),
+			fillRect: vi.fn(),
+			save: vi.fn(),
+			restore: vi.fn(),
+			translate: vi.fn(),
+			drawImage: vi.fn(),
+			scale: vi.fn((x: number, y: number) => scales.push([x, y])),
+		} as unknown as CanvasRenderingContext2D;
+		renderImage(
+			ctx,
+			{
+				source: {} as CanvasImageSource,
+				sourceWidth: 100,
+				sourceHeight: 100,
+				outputWidth: 416,
+				outputHeight: 496,
+				transform: { centerX: 208, centerY: 248, scale: 1, rotationDeg: 0 },
+				backgroundColor: '#000000',
+			},
+			0.37,
+		);
+		// 416×0.37=153.92→154、496×0.37=183.52→184
+		expect(ctx.canvas).toEqual({ width: 154, height: 184 });
+		expect(scales[0]).toEqual([154 / 416, 184 / 496]);
+	});
 });

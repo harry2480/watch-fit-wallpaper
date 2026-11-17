@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ImageTransform, Size } from '@/features/editor/geometry';
-import { previewRenderScale, renderImage } from '@/features/editor/renderer';
+import { prepareCanvas, previewRenderScale, renderImage } from '@/features/editor/renderer';
 
 type WatchPreviewProps = {
 	source: CanvasImageSource | null;
@@ -26,6 +26,28 @@ export function WatchPreview({
 }: WatchPreviewProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [displayWidth, setDisplayWidth] = useState(0);
+	const [devicePixelRatio, setDevicePixelRatio] = useState(() =>
+		typeof window === 'undefined' ? 1 : window.devicePixelRatio,
+	);
+
+	// 初回描画の前に表示幅を取得し、出力解像度で一度描いてから縮小し直す無駄を避ける
+	useLayoutEffect(() => {
+		const width = canvasRef.current?.getBoundingClientRect().width ?? 0;
+		if (width > 0) {
+			setDisplayWidth(width);
+		}
+	}, []);
+
+	// 別の DPI のモニターへの移動やブラウザのズームに追従する
+	useEffect(() => {
+		if (typeof window.matchMedia !== 'function') {
+			return;
+		}
+		const query = window.matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+		const onChange = () => setDevicePixelRatio(window.devicePixelRatio);
+		query.addEventListener('change', onChange);
+		return () => query.removeEventListener('change', onChange);
+	}, [devicePixelRatio]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -43,11 +65,12 @@ export function WatchPreview({
 	useEffect(() => {
 		const canvas = canvasRef.current;
 		const ctx = canvas?.getContext('2d') ?? null;
-		if (!ctx) {
+		// 表示幅が分かるまでは描画しない
+		if (!ctx || displayWidth <= 0) {
 			return;
 		}
 		const frame = requestAnimationFrame(() => {
-			const scale = previewRenderScale(output, displayWidth, window.devicePixelRatio);
+			const scale = previewRenderScale(output, displayWidth, devicePixelRatio);
 			if (source && sourceSize) {
 				renderImage(
 					ctx,
@@ -65,13 +88,10 @@ export function WatchPreview({
 				return;
 			}
 			// 画像未選択時は背景色だけを描く
-			ctx.canvas.width = Math.max(1, Math.round(output.width * scale));
-			ctx.canvas.height = Math.max(1, Math.round(output.height * scale));
-			ctx.fillStyle = backgroundColor;
-			ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+			prepareCanvas(ctx, output.width, output.height, scale, backgroundColor);
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [source, sourceSize, output, transform, backgroundColor, displayWidth]);
+	}, [source, sourceSize, output, transform, backgroundColor, displayWidth, devicePixelRatio]);
 
 	return (
 		<canvas

@@ -10,6 +10,7 @@ const GREEN: Rgb = [0, 255, 0];
 const BLUE: Rgb = [0, 0, 255];
 const YELLOW: Rgb = [255, 255, 0];
 const MAGENTA: Rgb = [255, 0, 255];
+const GRAY: Rgb = [128, 128, 128];
 const BACKGROUND = '#ff00ff';
 
 /** アンチエイリアス・色変換の差を許容する誤差（チャンネルごと） */
@@ -138,47 +139,48 @@ describe('renderImage（実ブラウザ）', () => {
 	});
 
 	it.each([
-		[
-			{ width: 333, height: 777 },
-			{ width: 416, height: 496 },
-		],
-		[
-			{ width: 4000, height: 101 },
-			{ width: 374, height: 446 },
-		],
-		[
-			{ width: 97, height: 3001 },
-			{ width: 422, height: 514 },
-		],
-	])('Cover は最小倍率で端に寄せても 1px の余白も出ない（%o → %o）', (imgSize, output) => {
-		const solid = document.createElement('canvas');
-		solid.width = imgSize.width;
-		solid.height = imgSize.height;
-		const sctx = solid.getContext('2d') as CanvasRenderingContext2D;
-		sctx.fillStyle = 'rgb(128,128,128)';
-		sctx.fillRect(0, 0, imgSize.width, imgSize.height);
-		for (const delta of [
-			{ x: 1e6, y: 1e6 },
-			{ x: -1e6, y: -1e6 },
-		]) {
-			const t = panTransform(
-				centeredTransform('cover', imgSize, output),
-				delta,
-				'cover',
-				imgSize,
-				output,
-			);
-			const ctx = render(solid, output, constrainTransform(t, 'cover', imgSize, output));
-			for (let x = 0; x < output.width; x += 1) {
-				expect(isColor(ctx, x, 0, MAGENTA), `上端 x=${x}`).toBe(false);
-				expect(isColor(ctx, x, output.height - 1, MAGENTA), `下端 x=${x}`).toBe(false);
+		[{ width: 333, height: 777 }, { width: 416, height: 496 }, 1],
+		[{ width: 4000, height: 101 }, { width: 374, height: 446 }, 1],
+		[{ width: 97, height: 3001 }, { width: 422, height: 514 }, 1],
+		[{ width: 333, height: 777 }, { width: 416, height: 496 }, 0.3],
+	])(
+		'Cover は最小倍率で端に寄せても端の画素に背景色が混ざらない（%o → %o、描画倍率 %s）',
+		(imgSize, output, renderScale) => {
+			const solid = document.createElement('canvas');
+			solid.width = imgSize.width;
+			solid.height = imgSize.height;
+			const sctx = solid.getContext('2d') as CanvasRenderingContext2D;
+			sctx.fillStyle = 'rgb(128,128,128)';
+			sctx.fillRect(0, 0, imgSize.width, imgSize.height);
+			for (const delta of [
+				{ x: 1e6, y: 1e6 },
+				{ x: -1e6, y: -1e6 },
+			]) {
+				const t = panTransform(
+					centeredTransform('cover', imgSize, output),
+					delta,
+					'cover',
+					imgSize,
+					output,
+				);
+				const ctx = render(
+					solid,
+					output,
+					constrainTransform(t, 'cover', imgSize, output),
+					renderScale,
+				);
+				const { width, height } = ctx.canvas;
+				for (let x = 0; x < width; x += 1) {
+					expect(isColor(ctx, x, 0, GRAY), `上端 x=${x}`).toBe(true);
+					expect(isColor(ctx, x, height - 1, GRAY), `下端 x=${x}`).toBe(true);
+				}
+				for (let y = 0; y < height; y += 1) {
+					expect(isColor(ctx, 0, y, GRAY), `左端 y=${y}`).toBe(true);
+					expect(isColor(ctx, width - 1, y, GRAY), `右端 y=${y}`).toBe(true);
+				}
 			}
-			for (let y = 0; y < output.height; y += 1) {
-				expect(isColor(ctx, 0, y, MAGENTA), `左端 y=${y}`).toBe(false);
-				expect(isColor(ctx, output.width - 1, y, MAGENTA), `右端 y=${y}`).toBe(false);
-			}
-		}
-	});
+		},
+	);
 
 	it('プレビュー（縮小描画）と出力の構図が一致する', () => {
 		const output = { width: 400, height: 400 };

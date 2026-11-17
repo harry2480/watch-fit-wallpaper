@@ -13,3 +13,4 @@ test-results/
 settings.local.json
 
 .vscode/settings.json
+.vitest/

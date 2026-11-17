@@ -13,19 +13,20 @@ export type RenderParams = {
 };
 
 /**
- * 画像を Output 座標系で描画する（要件定義 8.1 の順序）。
- * renderScale は Output 1px あたりの Canvas ピクセル数。出力は 1、プレビューは表示サイズに合わせて縮小する。
- * 高 DPI などの追加スケーリングはこの値だけで扱い、描画行列で一元管理する。
+ * Canvas を出力サイズ × renderScale に合わせ、変換行列を初期化して背景を塗る（要件定義 8.1 の 1〜3）。
+ * 同じサイズなら Canvas を確保し直さない。画像未選択時のプレビューもこれだけを使う。
  */
-export function renderImage(
+export function prepareCanvas(
 	ctx: CanvasRenderingContext2D,
-	params: RenderParams,
-	renderScale = 1,
-): void {
+	outputWidth: number,
+	outputHeight: number,
+	renderScale: number,
+	backgroundColor: string,
+): { pixelWidth: number; pixelHeight: number } {
 	const canvas = ctx.canvas;
 	// 1. Canvas サイズを設定（サイズ変更はコンテキスト状態もリセットする）
-	const pixelWidth = Math.max(1, Math.round(params.outputWidth * renderScale));
-	const pixelHeight = Math.max(1, Math.round(params.outputHeight * renderScale));
+	const pixelWidth = Math.max(1, Math.round(outputWidth * renderScale));
+	const pixelHeight = Math.max(1, Math.round(outputHeight * renderScale));
 	if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
 	if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
 
@@ -35,11 +36,31 @@ export function renderImage(
 	ctx.globalCompositeOperation = 'source-over';
 
 	// 3. 背景を描画（PNG でも不透明にする、8.6）
-	ctx.fillStyle = params.backgroundColor;
+	ctx.fillStyle = backgroundColor;
 	ctx.fillRect(0, 0, pixelWidth, pixelHeight);
+	return { pixelWidth, pixelHeight };
+}
+
+/**
+ * 画像を Output 座標系で描画する（要件定義 8.1 の順序）。
+ * renderScale は Output 1px あたりの Canvas ピクセル数。出力は 1、プレビューは表示サイズに合わせて縮小する。
+ * 高 DPI などの追加スケーリングはこの値だけで扱い、描画行列で一元管理する。
+ */
+export function renderImage(
+	ctx: CanvasRenderingContext2D,
+	params: RenderParams,
+	renderScale = 1,
+): void {
+	const { pixelWidth, pixelHeight } = prepareCanvas(
+		ctx,
+		params.outputWidth,
+		params.outputHeight,
+		renderScale,
+		params.backgroundColor,
+	);
 
 	ctx.save();
-	// Output 座標 → Canvas ピクセル（Canvas の丸めで生じる比率差も含めて合わせる）
+	// Output 座標 → Canvas ピクセル。Canvas サイズの丸めで縦横の比率がずれる分もここで合わせる
 	ctx.scale(pixelWidth / params.outputWidth, pixelHeight / params.outputHeight);
 	// 4. 画像中心へ移動
 	ctx.translate(params.transform.centerX, params.transform.centerY);
@@ -63,7 +84,10 @@ export function renderImage(
 	ctx.restore();
 }
 
-/** プレビュー Canvas の上限ピクセル数（過剰なメモリ消費を避ける） */
+/**
+ * プレビュー Canvas の上限ピクセル数（過剰なメモリ消費を避ける）。
+ * 現状は出力が最大 2048×2048（要件定義 4.5）で倍率も 1 以下のため効かないが、出力上限を広げた場合の安全弁として残す。
+ */
 export const MAX_PREVIEW_PIXELS = 2048 * 2048;
 
 /**
