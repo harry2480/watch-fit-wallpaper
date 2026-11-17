@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ExportDependencies, ExportPanel } from '@/components/export/ExportPanel';
 import { ExportError } from '@/features/export/errors';
@@ -25,8 +25,10 @@ function deps(overrides: Partial<ExportDependencies> = {}): ExportDependencies {
 	};
 }
 
-function setup(d: ExportDependencies, getSnapshot = () => snapshot as ExportSnapshot | null) {
+function setup(d: ExportDependencies) {
 	const onFormatChange = vi.fn();
+	let current = 'v1';
+	const getSnapshot = () => ({ snapshot, version: current });
 	const element = (editVersion: string) => (
 		<ExportPanel
 			getSnapshot={getSnapshot}
@@ -40,7 +42,13 @@ function setup(d: ExportDependencies, getSnapshot = () => snapshot as ExportSnap
 		/>
 	);
 	const utils = render(element('v1'));
-	return { onFormatChange, setVersion: (v: string) => utils.rerender(element(v)) };
+	return {
+		onFormatChange,
+		setVersion: (v: string) => {
+			current = v;
+			utils.rerender(element(v));
+		},
+	};
 }
 
 describe('ExportPanel', () => {
@@ -184,6 +192,25 @@ describe('ExportPanel', () => {
 		expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:generated');
 	});
 
+	it('作成中に編集されたら、完了後に古い生成画像と共有ボタンを出さない', async () => {
+		let resolveGenerate!: (blob: Blob) => void;
+		const generate = vi.fn(() => new Promise<Blob>((resolve) => (resolveGenerate = resolve)));
+		const share = vi.fn().mockResolvedValue('needs-user-activation');
+		const { setVersion } = setup(deps({ generate, canShare: () => true, share }));
+		fireEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+		await screen.findByRole('button', { name: '画像を作成しています…' });
+		setVersion('v2');
+		resolveGenerate(new Blob(['x']));
+		await waitFor(() => expect(share).toHaveBeenCalled());
+		await waitFor(() =>
+			expect(screen.getByRole('button', { name: '画像を保存' })).not.toHaveAttribute(
+				'aria-disabled',
+			),
+		);
+		expect(screen.queryByRole('button', { name: '共有して保存' })).not.toBeInTheDocument();
+		expect(screen.queryByText('保存できない場合')).not.toBeInTheDocument();
+	});
+
 	it('作成中は「画像を保存」にフォーカスを残したまま二重実行を防ぐ', async () => {
 		let resolveGenerate!: (blob: Blob) => void;
 		const generate = vi.fn(() => new Promise<Blob>((resolve) => (resolveGenerate = resolve)));
@@ -204,7 +231,7 @@ describe('ExportPanel', () => {
 		const onFormatChange = vi.fn();
 		render(
 			<ExportPanel
-				getSnapshot={() => snapshot}
+				getSnapshot={() => ({ snapshot, version: 'v1' })}
 				fileId="x"
 				format="jpeg"
 				quality={0.92}

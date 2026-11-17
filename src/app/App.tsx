@@ -17,6 +17,7 @@ import {
 	getZoomRange,
 	relativeToAbsoluteScale,
 } from '@/features/editor/reducer';
+import { exportVersion } from '@/features/export/version';
 import { findWatchModel } from '@/features/watch/models';
 import { useImageEditor } from '@/hooks/useImageEditor';
 
@@ -173,14 +174,14 @@ export function App() {
 
 					<ExportPanel
 						disabled={!editable}
-						editVersion={JSON.stringify([
-							decoded?.width,
-							decoded?.height,
-							state.transform,
-							editor.output,
-							state.background.color,
-							state.exportOptions,
-						])}
+						editVersion={exportVersion({
+							imageId: editor.imageId,
+							transform: state.transform,
+							output: editor.output,
+							backgroundColor: state.background.color,
+							format: state.exportOptions.format,
+							quality: state.exportOptions.quality,
+						})}
 						fileId={
 							state.modelId === CUSTOM_MODEL_ID && editor.output
 								? `custom-${editor.output.width}x${editor.output.height}`
@@ -191,20 +192,24 @@ export function App() {
 						onFormatChange={(format, quality) =>
 							dispatch({ type: 'SET_EXPORT_FORMAT', format, quality })
 						}
-						getSnapshot={() =>
-							decoded && editor.output && state.image
-								? {
-										source: decoded.source,
-										sourceSize: state.image,
-										output: editor.output,
-										// 確定前の操作も含めて、表示中の構図で出力する（9.4）
-										transform: previewRef.current?.getDisplayedTransform() ?? state.transform,
-										backgroundColor: state.background.color,
-										format: state.exportOptions.format,
-										quality: state.exportOptions.quality,
-									}
-								: null
-						}
+						getSnapshot={() => {
+							if (!decoded || !editor.output || !state.image) return null;
+							// 確定前の操作も含めて、表示中の構図で出力する（9.4）
+							const transform = previewRef.current?.getDisplayedTransform() ?? state.transform;
+							const snapshot = {
+								source: decoded.source,
+								sourceSize: state.image,
+								output: editor.output,
+								transform,
+								backgroundColor: state.background.color,
+								format: state.exportOptions.format,
+								quality: state.exportOptions.quality,
+							};
+							return {
+								snapshot,
+								version: exportVersion({ ...snapshot, imageId: editor.imageId }),
+							};
+						}}
 					/>
 				</section>
 			</main>

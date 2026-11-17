@@ -4,6 +4,7 @@ import { EXPORT_ERROR_MESSAGES, ExportError } from '@/features/export/errors';
 import { exportFilename } from '@/features/export/filename';
 import { type ExportSnapshot, generateExportBlob } from '@/features/export/generate';
 import { canShareFile, shareFile } from '@/features/export/share';
+import { exportVersion } from '@/features/export/version';
 
 describe('exportFilename', () => {
 	it('watchfit-{modelId}-{ローカル日時}.{ext} の形式で、元画像名を含まない', () => {
@@ -203,6 +204,32 @@ describe('generateExportBlob', () => {
 	it('エラーメッセージは日本語', () => {
 		for (const message of Object.values(EXPORT_ERROR_MESSAGES)) {
 			expect(message).toMatch(/[ぁ-んァ-ヶ]/);
+		}
+	});
+});
+
+describe('exportVersion', () => {
+	const base = {
+		imageId: 1,
+		transform: { centerX: 1, centerY: 2, scale: 3, rotationDeg: 0 },
+		output: { width: 416, height: 496 },
+		backgroundColor: '#000000',
+		format: 'png' as const,
+		quality: 0.92,
+	};
+
+	it('同じ内容なら同じ値、出力内容が変われば違う値になる', () => {
+		expect(exportVersion(base)).toBe(exportVersion({ ...base, transform: { ...base.transform } }));
+		for (const changed of [
+			{ ...base, imageId: 2 },
+			{ ...base, transform: { ...base.transform, centerX: 1.5 } },
+			{ ...base, output: { width: 422, height: 514 } },
+			{ ...base, output: null },
+			{ ...base, backgroundColor: '#ffffff' },
+			{ ...base, format: 'jpeg' as const },
+			{ ...base, quality: 0.8 },
+		]) {
+			expect(exportVersion(changed)).not.toBe(exportVersion(base));
 		}
 	});
 });

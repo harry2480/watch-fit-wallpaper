@@ -1,5 +1,5 @@
 import { Download, Share2 } from 'lucide-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { type ExportFormat, MAX_JPEG_QUALITY, MIN_JPEG_QUALITY } from '@/features/editor/reducer';
@@ -28,8 +28,11 @@ const defaultDependencies: ExportDependencies = {
 };
 
 type ExportPanelProps = {
-	/** 保存できる状態のときだけスナップショットを返す（9.4） */
-	getSnapshot: () => ExportSnapshot | null;
+	/**
+	 * 保存できる状態のときだけ、スナップショットと、その内容から作った識別子を返す（9.4）。
+	 * 識別子は editVersion と同じ方法で作ること
+	 */
+	getSnapshot: () => { snapshot: ExportSnapshot; version: string } | null;
 	/** ファイル名に使う識別子（モデル ID など） */
 	fileId: string;
 	format: ExportFormat;
@@ -37,8 +40,8 @@ type ExportPanelProps = {
 	onFormatChange: (format: ExportFormat, quality?: number) => void;
 	disabled: boolean;
 	/**
-	 * 出力内容に関わる編集状態を表す値。変わったら生成済みの画像と状態を破棄し、
-	 * 古い構図の画像を共有・表示しないようにする
+	 * 現在の編集状態から作った識別子。生成済みの画像の識別子と異なる場合、その画像と保存の状態は
+	 * 古いものとして扱い、表示・共有しない
 	 */
 	editVersion: string;
 	deps?: ExportDependencies;
@@ -74,20 +77,22 @@ export function ExportPanel({
 }: ExportPanelProps) {
 	const [status, setStatus] = useState<Status>({ kind: 'idle' });
 	const [generated, setGenerated] = useState<Generated | null>(null);
+	/** 直近の保存で使ったスナップショットの識別子 */
+	const [resultVersion, setResultVersion] = useState<string | null>(null);
 	const qualityId = useId();
 	const formatName = useId();
 
-	const workingRef = useRef(false);
-	workingRef.current = status.kind === 'working';
+	const working = status.kind === 'working';
+	// 保存の結果が現在の編集状態と一致するか。作成中に編集された場合も、完了後に不一致になる
+	const fresh = resultVersion !== null && resultVersion === editVersion;
 
-	// 編集内容が変わったら、生成済みの画像と保存の状態を破棄する。
-	// 作成中は除く（保存の直前に確定待ちの操作を確定すると、編集状態が変わるため）
-	// biome-ignore lint/correctness/useExhaustiveDependencies: editVersion の変化だけをきっかけにする
+	// 古くなった生成画像と保存の状態は破棄する（作成中は完了を待つ）
 	useEffect(() => {
-		if (workingRef.current) return;
+		if (working || resultVersion === null || resultVersion === editVersion) return;
 		setGenerated(null);
 		setStatus({ kind: 'idle' });
-	}, [editVersion]);
+		setResultVersion(null);
+	}, [working, resultVersion, editVersion]);
 
 	// 生成済み画像の Object URL は、作り直したとき・画面を閉じるときに解放する
 	useEffect(() => {
@@ -110,9 +115,12 @@ export function ExportPanel({
 	};
 
 	const save = async () => {
-		if (status.kind === 'working' || disabled) return;
-		const snapshot = getSnapshot();
-		if (!snapshot) return;
+		if (working || disabled) return;
+		const taken = getSnapshot();
+		if (!taken) return;
+		const { snapshot, version } = taken;
+		setResultVersion(version);
+		setGenerated(null);
 		setStatus({ kind: 'working' });
 		try {
 			const blob = await deps.generate(snapshot);
@@ -138,7 +146,8 @@ export function ExportPanel({
 		}
 	};
 
-	const working = status.kind === 'working';
+	const shownStatus: Status = working || fresh ? status : { kind: 'idle' };
+	const shownGenerated = fresh ? generated : null;
 
 	return (
 		<section aria-label="保存" className="flex flex-col gap-4">
@@ -199,51 +208,51 @@ export function ExportPanel({
 				{working ? '画像を作成しています…' : '画像を保存'}
 			</Button>
 
-			{status.kind === 'error' && (
+			{shownStatus.kind === 'error' && (
 				<p
 					role="alert"
 					className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"
 				>
-					{status.message}
+					{shownStatus.message}
 				</p>
 			)}
 			<div aria-live="polite" className="flex flex-col gap-3 text-sm">
-				{status.kind === 'needs-tap' && generated && (
+				{shownStatus.kind === 'needs-tap' && shownGenerated && (
 					<div className="flex flex-col gap-2 rounded-lg border border-border p-3">
 						<p>画像を作成しました。ボタンを押して共有シートから保存してください。</p>
-						<Button onClick={() => share(generated.file)} disabled={disabled}>
+						<Button onClick={() => share(shownGenerated.file)} disabled={disabled}>
 							<Share2 aria-hidden="true" />
 							共有して保存
 						</Button>
 					</div>
 				)}
-				{status.kind === 'done' && (
+				{shownStatus.kind === 'done' && (
 					<p className="rounded-lg border border-border p-3">
-						{status.via === 'share'
+						{shownStatus.via === 'share'
 							? '共有シートから保存しました。'
-							: `${generated?.file.name ?? '画像'} のダウンロードを開始しました。保存されない場合は、下の画像を長押し（右クリック）して保存してください。`}
+							: `${shownGenerated?.file.name ?? '画像'} のダウンロードを開始しました。保存されない場合は、下の画像を長押し（右クリック）して保存してください。`}
 					</p>
 				)}
 			</div>
 
-			{generated && (
+			{shownGenerated && (
 				<details
 					className="rounded-lg border border-border p-4 text-sm"
-					open={status.kind === 'done' && status.via === 'download'}
+					open={shownStatus.kind === 'done' && shownStatus.via === 'download'}
 				>
 					<summary className="cursor-pointer font-medium">保存できない場合</summary>
 					<p className="mt-2 text-muted-foreground">
 						下の画像を長押し（PC では右クリック）して保存してください。
 					</p>
 					<img
-						src={generated.url}
+						src={shownGenerated.url}
 						alt="保存用に作成した画像"
 						className="mx-auto mt-3 max-h-80 w-auto rounded-md border border-border"
 					/>
 				</details>
 			)}
 
-			<SaveGuide open={status.kind === 'done'} />
+			<SaveGuide open={shownStatus.kind === 'done'} />
 		</section>
 	);
 }
