@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { makeQuadrantPng } from './helpers';
+import { makeQuadrantPng, near, previewColorAt } from './helpers';
 
 test('画像を選ぶと Apple Watch のプレビューに描画される', async ({ page }) => {
 	await page.goto('./');
@@ -13,17 +13,12 @@ test('画像を選ぶと Apple Watch のプレビューに描画される', asyn
 	await expect(preview).toBeVisible();
 	await expect(page.getByRole('button', { name: '別の画像を選ぶ' })).toBeVisible();
 
-	// Cover の中央配置なので、プレビューの左上は赤、右下は黄になる
-	const colors = await preview.evaluate((canvas: HTMLCanvasElement) => {
-		const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
-		const at = (x: number, y: number) => [...ctx.getImageData(x, y, 1, 1).data].slice(0, 3);
-		return {
-			topLeft: at(Math.floor(canvas.width * 0.1), Math.floor(canvas.height * 0.1)),
-			bottomRight: at(Math.floor(canvas.width * 0.9), Math.floor(canvas.height * 0.9)),
-		};
-	});
-	expect(colors.topLeft).toEqual([255, 0, 0]);
-	expect(colors.bottomRight).toEqual([255, 255, 0]);
+	// Cover の中央配置なので、プレビューの左上は赤、右下は黄になる。
+	// 描画は requestAnimationFrame で行うため、描かれるまで待つ（色管理による小さな差は許容する）
+	await expect
+		.poll(async () => near(await previewColorAt(page, 0.1, 0.1), [255, 0, 0], 12))
+		.toBe(true);
+	expect(near(await previewColorAt(page, 0.9, 0.9), [255, 255, 0], 12)).toBe(true);
 });
 
 test('対応していないファイルではエラーを表示し、選び直せる', async ({ page }) => {
