@@ -4,6 +4,7 @@ import {
 	type DecodeDependencies,
 	type DecodedImage,
 	decodeImageFile,
+	loadImageElement,
 } from '@/features/image/decode';
 import { ImageLoadError, MAX_FILE_BYTES } from '@/features/image/validate';
 import { ftypHeader, GIF, jpegHeader, PDF, pngHeader, SVG } from './bytes';
@@ -26,7 +27,9 @@ function deps(result: ImageBitmap | Error): DecodeDependencies & {
 			if (result instanceof Error) throw result;
 			return result;
 		}),
-		loadImageElement: vi.fn(),
+		loadImageElement: vi.fn(async () => {
+			throw result instanceof Error ? result : new Error('未使用');
+		}),
 	};
 }
 
@@ -132,15 +135,46 @@ describe('decodeImageFile のデコード', () => {
 		const image = Object.assign(new Image(), {});
 		Object.defineProperty(image, 'naturalWidth', { value: 640 });
 		Object.defineProperty(image, 'naturalHeight', { value: 480 });
-		image.src = 'blob:test';
-		const loadImageElement = vi.fn(async () => image);
+		const release = vi.fn();
+		const loadImageElement = vi.fn(async () => ({ image, release }));
 		const decoded = await decodeImageFile(fileOf(pngHeader(640, 480)), {
 			createImageBitmap: undefined,
 			loadImageElement,
 		});
 		expect(decoded).toMatchObject({ width: 640, height: 480, source: image });
+		expect(release).not.toHaveBeenCalled();
 		decoded.release();
-		expect(image.hasAttribute('src')).toBe(false);
+		expect(release).toHaveBeenCalledTimes(1);
+	});
+
+	it('createImageBitmap が失敗したら HTMLImageElement で読み直す', async () => {
+		const image = new Image();
+		Object.defineProperty(image, 'naturalWidth', { value: 300 });
+		Object.defineProperty(image, 'naturalHeight', { value: 200 });
+		const loadImageElement = vi.fn(async () => ({ image, release: vi.fn() }));
+		const decoded = await decodeImageFile(fileOf(ftypHeader('heic')), {
+			createImageBitmap: vi.fn(async () => {
+				throw new TypeError('imageOrientation に未対応');
+			}),
+			loadImageElement,
+		});
+		expect(loadImageElement).toHaveBeenCalled();
+		expect(decoded).toMatchObject({ width: 300, height: 200, source: image });
+	});
+
+	it('createImageBitmap がメモリ不足で失敗したら読み直さず out-of-memory', async () => {
+		const loadImageElement = vi.fn();
+		expect(
+			await codeOf(
+				decodeImageFile(fileOf(ftypHeader('heic')), {
+					createImageBitmap: vi.fn(async () => {
+						throw new DOMException('quota', 'QuotaExceededError');
+					}),
+					loadImageElement,
+				}),
+			),
+		).toBe('out-of-memory');
+		expect(loadImageElement).not.toHaveBeenCalled();
 	});
 
 	it('release は ImageBitmap.close() を 1 回だけ呼ぶ', async () => {
@@ -219,5 +253,50 @@ describe('createLatestImageLoader', () => {
 		pending.resolve(image);
 		expect(await p).toEqual({ status: 'stale' });
 		expect(image.release).toHaveBeenCalled();
+	});
+});
+
+describe('loadImageElement', () => {
+	// jsdom の HTMLImageElement には decode() が無いため、テスト中だけ定義する
+	function stubDecode(impl: () => Promise<void>) {
+		Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+			value: impl,
+			configurable: true,
+			writable: true,
+		});
+		return () => {
+			Reflect.deleteProperty(HTMLImageElement.prototype, 'decode');
+		};
+	}
+
+	it('失敗したら src を外して Object URL を解放する', async () => {
+		const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test');
+		const restore = stubDecode(() => Promise.reject(new DOMException('x', 'EncodingError')));
+		try {
+			await expect(loadImageElement(new Blob(['x']))).rejects.toThrow();
+			expect(revoke).toHaveBeenCalledWith('blob:test');
+		} finally {
+			restore();
+			create.mockRestore();
+			revoke.mockRestore();
+		}
+	});
+
+	it('成功時は解放まで Object URL を保持する', async () => {
+		const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:ok');
+		const restore = stubDecode(() => Promise.resolve());
+		try {
+			const loaded = await loadImageElement(new Blob(['x']));
+			expect(revoke).not.toHaveBeenCalled();
+			loaded.release();
+			expect(revoke).toHaveBeenCalledWith('blob:ok');
+			expect(loaded.image.hasAttribute('src')).toBe(false);
+		} finally {
+			restore();
+			create.mockRestore();
+			revoke.mockRestore();
+		}
 	});
 });

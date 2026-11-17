@@ -111,13 +111,13 @@ export function webpVp8Header(width: number, height: number): Uint8Array {
 	]);
 }
 
-export function ftypHeader(brand: string): Uint8Array {
+export function ftypHeader(brand: string, compatible = ['mif1', 'heic']): Uint8Array {
 	return new Uint8Array([
-		...u32be(24),
+		...u32be(16 + compatible.length * 4),
 		...text('ftyp'),
 		...text(brand),
 		...u32be(0),
-		...text('mif1heic'),
+		...compatible.flatMap(text),
 	]);
 }
 

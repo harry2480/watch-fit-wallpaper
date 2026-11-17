@@ -8,7 +8,10 @@ import {
 	validateDimensions,
 } from './validate';
 
-/** JPEG の寸法（SOF）は EXIF の後ろにあるため、先頭から多めに読む */
+/**
+ * JPEG の寸法（SOF）は EXIF 等の後ろにあるため、先頭から多めに読む。
+ * この範囲で寸法を読めない画像はデコード後の寸法で判定する。
+ */
 const HEADER_READ_BYTES = 512 * 1024;
 
 export type DecodedImage = {
@@ -19,23 +22,35 @@ export type DecodedImage = {
 	release: () => void;
 };
 
+export type LoadedImageElement = { image: HTMLImageElement; release: () => void };
+
 export type DecodeDependencies = {
 	createImageBitmap?:
 		| ((blob: Blob, options?: ImageBitmapOptions) => Promise<ImageBitmap>)
 		| undefined;
-	loadImageElement: (blob: Blob) => Promise<HTMLImageElement>;
+	loadImageElement: (blob: Blob) => Promise<LoadedImageElement>;
 };
 
-/** createImageBitmap が使えない環境向け。Object URL はデコード完了後すぐに解放する */
-export function loadImageElement(blob: Blob): Promise<HTMLImageElement> {
+/**
+ * HTMLImageElement で読み込む。Object URL はブラウザが再デコードに使う可能性があるため、
+ * 画像を解放するまで保持する（要件定義 5.7）。
+ */
+export async function loadImageElement(blob: Blob): Promise<LoadedImageElement> {
 	const url = URL.createObjectURL(blob);
 	const image = new Image();
 	image.decoding = 'async';
+	const release = () => {
+		image.removeAttribute('src');
+		URL.revokeObjectURL(url);
+	};
 	image.src = url;
-	return image
-		.decode()
-		.then(() => image)
-		.finally(() => URL.revokeObjectURL(url));
+	try {
+		await image.decode();
+	} catch (error) {
+		release();
+		throw error;
+	}
+	return { image, release };
 }
 
 export function defaultDecodeDependencies(): DecodeDependencies {
@@ -48,39 +63,53 @@ export function defaultDecodeDependencies(): DecodeDependencies {
 	};
 }
 
+function isOutOfMemory(error: unknown): boolean {
+	return (
+		error instanceof RangeError ||
+		(typeof DOMException !== 'undefined' &&
+			error instanceof DOMException &&
+			error.name === 'QuotaExceededError')
+	);
+}
+
 function toDecodeError(error: unknown): ImageLoadError {
 	if (error instanceof ImageLoadError) {
 		return error;
 	}
-	if (error instanceof RangeError) {
+	if (isOutOfMemory(error)) {
 		return new ImageLoadError('out-of-memory');
 	}
 	return new ImageLoadError('corrupted');
 }
 
-function releaseSource(source: ImageBitmap | HTMLImageElement): void {
-	if ('close' in source && typeof source.close === 'function') {
-		source.close();
-		return;
-	}
-	if (source instanceof HTMLImageElement) {
-		source.removeAttribute('src');
-	}
-}
+type DecodedSource = {
+	source: ImageBitmap | HTMLImageElement;
+	dimensions: Dimensions;
+	release: () => void;
+};
 
-async function decodeSource(
-	file: Blob,
-	deps: DecodeDependencies,
-): Promise<{ source: ImageBitmap | HTMLImageElement; dimensions: Dimensions }> {
+async function decodeSource(file: Blob, deps: DecodeDependencies): Promise<DecodedSource> {
 	if (deps.createImageBitmap) {
-		// EXIF Orientation はブラウザに適用させ、デコード後の寸法を正本にする（二重適用しない）
-		const bitmap = await deps.createImageBitmap(file, { imageOrientation: 'from-image' });
-		return { source: bitmap, dimensions: { width: bitmap.width, height: bitmap.height } };
+		try {
+			// EXIF Orientation はブラウザに適用させ、デコード後の寸法を正本にする（二重適用しない）
+			const bitmap = await deps.createImageBitmap(file, { imageOrientation: 'from-image' });
+			return {
+				source: bitmap,
+				dimensions: { width: bitmap.width, height: bitmap.height },
+				release: () => bitmap.close(),
+			};
+		} catch (error) {
+			// メモリ不足以外（オプション非対応・形式非対応など）は HTMLImageElement で読み直す
+			if (isOutOfMemory(error)) {
+				throw error;
+			}
+		}
 	}
-	const image = await deps.loadImageElement(file);
+	const { image, release } = await deps.loadImageElement(file);
 	return {
 		source: image,
 		dimensions: { width: image.naturalWidth, height: image.naturalHeight },
+		release,
 	};
 }
 
@@ -120,16 +149,19 @@ export async function decodeImageFile(
 		}
 	}
 	// 4. 実際にデコードできること
-	let decoded: Awaited<ReturnType<typeof decodeSource>>;
+	let decoded: DecodedSource;
 	try {
 		decoded = await decodeSource(file, deps);
 	} catch (error) {
-		throw format === 'heic' ? new ImageLoadError('heic-unsupported') : toDecodeError(error);
+		if (format === 'heic' && !isOutOfMemory(error)) {
+			throw new ImageLoadError('heic-unsupported');
+		}
+		throw toDecodeError(error);
 	}
 	// 5・6. デコード後の寸法を正本として検証
 	const dimensionError = validateDimensions(decoded.dimensions);
 	if (dimensionError) {
-		releaseSource(decoded.source);
+		decoded.release();
 		throw new ImageLoadError(dimensionError);
 	}
 	let released = false;
@@ -140,7 +172,7 @@ export async function decodeImageFile(
 		release: () => {
 			if (!released) {
 				released = true;
-				releaseSource(decoded.source);
+				decoded.release();
 			}
 		},
 	};

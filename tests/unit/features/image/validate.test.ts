@@ -26,6 +26,8 @@ describe('sniffImageFormat', () => {
 		['HEIC', ftypHeader('heic'), 'heic'],
 		['HEIF(mif1)', ftypHeader('mif1'), 'heic'],
 		['AVIF', ftypHeader('avif'), 'avif'],
+		['mif1 が先頭の AVIF', ftypHeader('mif1', ['mif1', 'avif', 'miaf']), 'avif'],
+		['HEIF の画像シーケンス', ftypHeader('msf1', ['msf1', 'hevc']), 'unknown'],
 		['MP4 等の動画', ftypHeader('isom'), 'unknown'],
 		['GIF', GIF, 'gif'],
 		['PDF', PDF, 'pdf'],
@@ -46,6 +48,35 @@ describe('readHeaderDimensions', () => {
 		['WebP VP8', webpVp8Header(4032, 3024), 'webp'],
 	] as const)('%s の寸法を読む', (_n, bytes, format) => {
 		expect(readHeaderDimensions(bytes, format)).toEqual({ width: 4032, height: 3024 });
+	});
+
+	it.each([
+		['長さ 0 のセグメント', new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0, 0, 0, 0, 0, 0, 0, 0])],
+		['0xFF の連続', new Uint8Array([0xff, 0xd8, ...new Array(40).fill(0xff)])],
+		['0xFF 以外のバイト', new Uint8Array([0xff, 0xd8, 0x12, 0x34, ...new Array(20).fill(0)])],
+		['途中で切れた SOF', jpegHeader(100, 100).subarray(0, 1006)],
+		['RST マーカーを挟む', new Uint8Array([0xff, 0xd8, 0xff, 0xd0, ...new Array(20).fill(0)])],
+	])('壊れた JPEG（%s）でも停止して null を返す', (_n, bytes) => {
+		expect(readHeaderDimensions(bytes, 'jpeg')).toBeNull();
+	});
+
+	it.each([
+		['VP8 の途中で切れたもの', webpVp8Header(100, 100).subarray(0, 26)],
+		[
+			'VP8L の署名が違うもの',
+			Uint8Array.from(webpVp8lHeader(100, 100), (b, i) => (i === 20 ? 0 : b)),
+		],
+		[
+			'VP8 の開始コードが違うもの',
+			Uint8Array.from(webpVp8Header(100, 100), (b, i) => (i === 23 ? 0 : b)),
+		],
+	])('WebP（%s）は null', (_n, bytes) => {
+		expect(readHeaderDimensions(bytes, 'webp')).toBeNull();
+	});
+
+	it('WebP ヘッダーの寸法で 5,000 万画素超を検出できる', () => {
+		const dimensions = readHeaderDimensions(webpVp8xHeader(10000, 6000), 'webp');
+		expect(dimensions && validateDimensions(dimensions)).toBe('too-many-pixels');
 	});
 
 	it('読めない場合は null', () => {

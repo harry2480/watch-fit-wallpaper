@@ -43,18 +43,9 @@ function ascii(bytes: Uint8Array, start: number, length: number): string {
 	return String.fromCharCode(...bytes.subarray(start, start + length));
 }
 
-const HEIF_BRANDS = new Set([
-	'heic',
-	'heix',
-	'hevc',
-	'hevx',
-	'heim',
-	'heis',
-	'hevm',
-	'hevs',
-	'mif1',
-	'msf1',
-]);
+/** 静止画の HEIF ブランド。画像シーケンス用（msf1・hevc・hevs 等）は対象外 */
+const HEIF_BRANDS = new Set(['heic', 'heix', 'heim', 'heis', 'mif1']);
+const AVIF_BRANDS = new Set(['avif', 'avis']);
 
 /** 先頭バイトから実際の形式を判定する（拡張子・MIME type は信用しない、要件定義 5.4） */
 export function sniffImageFormat(bytes: Uint8Array): SniffedFormat {
@@ -71,11 +62,16 @@ export function sniffImageFormat(bytes: Uint8Array): SniffedFormat {
 		return 'webp';
 	}
 	if (bytes.length >= 12 && ascii(bytes, 4, 4) === 'ftyp') {
-		const major = ascii(bytes, 8, 4);
-		if (major === 'avif' || major === 'avis') {
+		// major brand（offset 8）と互換ブランド（offset 16 からボックス末尾まで）を見る
+		const boxSize = Math.min(readUint32BE(bytes, 0), bytes.length);
+		const brands = [ascii(bytes, 8, 4)];
+		for (let offset = 16; offset + 4 <= boxSize; offset += 4) {
+			brands.push(ascii(bytes, offset, 4));
+		}
+		if (brands.some((brand) => AVIF_BRANDS.has(brand))) {
 			return 'avif';
 		}
-		if (HEIF_BRANDS.has(major)) {
+		if (HEIF_BRANDS.has(brands[0] ?? '')) {
 			return 'heic';
 		}
 		return 'unknown';
@@ -118,7 +114,8 @@ function readUint32BE(bytes: Uint8Array, offset: number): number {
 
 /**
  * ヘッダーから画像の寸法を読む（デコード前に巨大画像を弾くため）。
- * 読めない場合は null を返し、デコード後の寸法で判定する。
+ * 読めない場合（HEIC、渡したバイト列の範囲に JPEG の SOF が無い等）は null を返し、
+ * デコード後の寸法で判定する。
  */
 export function readHeaderDimensions(bytes: Uint8Array, format: SniffedFormat): Dimensions | null {
 	if (format === 'png' && bytes.length >= 24 && ascii(bytes, 12, 4) === 'IHDR') {
@@ -129,13 +126,19 @@ export function readHeaderDimensions(bytes: Uint8Array, format: SniffedFormat): 
 		if (chunk === 'VP8X' && bytes.length >= 30) {
 			return { width: readUint24LE(bytes, 24) + 1, height: readUint24LE(bytes, 27) + 1 };
 		}
-		if (chunk === 'VP8 ' && bytes.length >= 30) {
+		if (
+			chunk === 'VP8 ' &&
+			bytes.length >= 30 &&
+			bytes[23] === 0x9d &&
+			bytes[24] === 0x01 &&
+			bytes[25] === 0x2a
+		) {
 			return {
 				width: (bytes[26] ?? 0) | (((bytes[27] ?? 0) & 0x3f) << 8),
 				height: (bytes[28] ?? 0) | (((bytes[29] ?? 0) & 0x3f) << 8),
 			};
 		}
-		if (chunk === 'VP8L' && bytes.length >= 25) {
+		if (chunk === 'VP8L' && bytes.length >= 25 && bytes[20] === 0x2f) {
 			const b0 = bytes[21] ?? 0;
 			const b1 = bytes[22] ?? 0;
 			const b2 = bytes[23] ?? 0;
@@ -156,6 +159,11 @@ export function readHeaderDimensions(bytes: Uint8Array, format: SniffedFormat): 
 			const marker = bytes[offset + 1] ?? 0;
 			if (marker === 0xff) {
 				offset += 1;
+				continue;
+			}
+			// 長さを持たないマーカー（TEM・RST0〜7）
+			if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
+				offset += 2;
 				continue;
 			}
 			// SOF0〜SOF15（DHT=C4・JPG=C8・DAC=CC を除く）
