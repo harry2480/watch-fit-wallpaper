@@ -6,10 +6,12 @@ import { FitModeSelector } from '@/components/editor/FitModeSelector';
 import { ImageUploader } from '@/components/editor/ImageUploader';
 import { WatchPreview } from '@/components/editor/WatchPreview';
 import { ZoomSlider } from '@/components/editor/ZoomSlider';
+import { ExportPanel } from '@/components/export/ExportPanel';
 import { Button } from '@/components/ui/button';
 import { GENERIC_CORNER_RADIUS_RATIO, WatchFrame } from '@/components/watch/WatchFrame';
 import { WatchModelSelector } from '@/components/watch/WatchModelSelector';
 import {
+	CUSTOM_MODEL_ID,
 	canPan,
 	getRelativeZoom,
 	getZoomRange,
@@ -166,6 +168,33 @@ export function App() {
 							canMove={canMove}
 						/>
 					</section>
+
+					<ExportPanel
+						disabled={!editable}
+						fileId={
+							state.modelId === CUSTOM_MODEL_ID && editor.output
+								? `custom-${editor.output.width}x${editor.output.height}`
+								: state.modelId
+						}
+						format={state.exportOptions.format}
+						quality={state.exportOptions.quality}
+						onFormatChange={(format, quality) =>
+							dispatch({ type: 'SET_EXPORT_FORMAT', format, quality })
+						}
+						getSnapshot={() =>
+							decoded && editor.output && state.image
+								? {
+										source: decoded.source,
+										sourceSize: state.image,
+										output: editor.output,
+										transform: state.transform,
+										backgroundColor: state.background.color,
+										format: state.exportOptions.format,
+										quality: state.exportOptions.quality,
+									}
+								: null
+						}
+					/>
 				</section>
 			</main>
 		</div>
