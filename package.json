@@ -1,22 +1,19 @@
 {
-	"name": "product-starter",
+	"name": "watchfit",
 	"private": true,
+	"version": "0.0.0",
+	"type": "module",
 	"packageManager": "pnpm@10.18.1",
 	"scripts": {
-		"dev": "pnpm --filter webapp dev",
-		"build": "pnpm --filter webapp build",
+		"dev": "vite",
+		"build": "vite build",
+		"preview": "vite preview",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
-		"typecheck": "pnpm --filter webapp typecheck",
-		"verify": "pnpm lint && pnpm --filter webapp prisma generate && pnpm typecheck && pnpm test:unit && pnpm depcruise",
-		"test:unit": "pnpm --filter webapp test:unit",
-		"test:coverage": "pnpm --filter webapp test:coverage",
-		"test:integration": "pnpm --filter webapp test:integration",
-		"depcruise": "pnpm --filter webapp depcruise",
-		"knip": "knip",
-		"db:seed": "pnpm --filter webapp prisma db seed",
-		"db:reset": "pnpm --filter webapp prisma migrate reset",
-		"db:migrate": "pnpm --filter webapp prisma migrate dev",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"test:unit": "vitest run",
+		"test:e2e": "playwright test",
+		"verify": "pnpm lint && pnpm typecheck && pnpm test:unit",
 		"merge": "bash scripts/merge-pr.sh",
 		"prepare": "simple-git-hooks"
 	},
@@ -24,24 +21,39 @@
 		"pre-commit": "pnpm lint:fix",
 		"pre-push": "pnpm verify"
 	},
-	"devDependencies": {
-		"@biomejs/biome": "^1.9",
-		"knip": "^5.85.0",
-		"simple-git-hooks": "^2.14.0",
-		"supabase": "^2.117.0",
-		"vercel": "^50.33.1"
+	"dependencies": {
+		"class-variance-authority": "0.7.1",
+		"clsx": "2.1.1",
+		"lucide-react": "1.74.0",
+		"react": "19.3.1",
+		"react-dom": "19.3.1",
+		"tailwind-merge": "3.7.0",
+		"zod": "4.6.7"
 	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"@biomejs/biome",
-			"@prisma/client",
-			"@prisma/engines",
 			"esbuild",
-			"prisma",
-			"sharp",
-			"simple-git-hooks",
-			"supabase"
-		],
-		"ignoredBuiltDependencies": ["supabase"]
+			"simple-git-hooks"
+		]
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.6.8",
+		"@playwright/test": "1.65.1",
+		"@tailwindcss/vite": "4.3.5",
+		"@testing-library/jest-dom": "7.0.1",
+		"@testing-library/react": "16.3.3",
+		"@testing-library/user-event": "14.6.12",
+		"@types/node": "26.6.6",
+		"@types/react": "19.3.0",
+		"@types/react-dom": "19.3.0",
+		"@vitejs/plugin-react": "6.3.0",
+		"jsdom": "31.0.1",
+		"simple-git-hooks": "2.14.0",
+		"tailwindcss": "4.3.5",
+		"tw-animate-css": "1.4.0",
+		"typescript": "7.0.2",
+		"vite": "8.3.8",
+		"vitest": "5.1.0"
 	}
 }
