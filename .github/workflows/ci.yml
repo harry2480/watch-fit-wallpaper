@@ -48,6 +48,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: 描画テスト（実ブラウザでのピクセル比較）
+        run: pnpm test:browser
       - name: E2E（GitHub Pages と同じサブパスで配信）
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
