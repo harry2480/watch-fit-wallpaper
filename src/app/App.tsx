@@ -1,14 +1,22 @@
 import { AlertCircle, X } from 'lucide-react';
 import { useEffect } from 'react';
+import { BackgroundPicker } from '@/components/editor/BackgroundPicker';
+import { EditorToolbar } from '@/components/editor/EditorToolbar';
+import { FitModeSelector } from '@/components/editor/FitModeSelector';
 import { ImageUploader } from '@/components/editor/ImageUploader';
 import { WatchPreview } from '@/components/editor/WatchPreview';
+import { ZoomSlider } from '@/components/editor/ZoomSlider';
 import { Button } from '@/components/ui/button';
 import { GENERIC_CORNER_RADIUS_RATIO, WatchFrame } from '@/components/watch/WatchFrame';
 import { WatchModelSelector } from '@/components/watch/WatchModelSelector';
+import { baseScale, scaleRange } from '@/features/editor/geometry';
+import { getRelativeZoom, relativeToAbsoluteScale } from '@/features/editor/reducer';
 import { findWatchModel } from '@/features/watch/models';
 import { useImageEditor } from '@/hooks/useImageEditor';
 
 const FALLBACK_OUTPUT = { width: 416, height: 496 };
+/** 方向ボタン 1 回の移動量（出力サイズに対する比率） */
+const MOVE_STEP_RATIO = 0.02;
 
 export function App() {
 	const editor = useImageEditor();
@@ -17,6 +25,16 @@ export function App() {
 	const frameOutput = editor.previewOutput ?? editor.output ?? FALLBACK_OUTPUT;
 	const hasImage = decoded !== null && state.image !== null;
 	const { loadFile } = editor;
+	// 編集操作は、画像があり出力サイズが有効なときだけ行える（10.3）
+	const editable = hasImage && editor.canExport;
+	const zoomRange =
+		state.image && editor.previewOutput
+			? (() => {
+					const range = scaleRange(state.fitMode, state.image, editor.previewOutput);
+					const base = baseScale(state.fitMode, state.image, editor.previewOutput);
+					return { min: range.min / base, max: range.max / base };
+				})()
+			: { min: 1, max: 4 };
 
 	// ページのどこにファイルを落としても、ブラウザがファイルを開いて編集内容を失わないようにし、
 	// 画像として読み込む（ドロップ領域が処理済みのものは除く）
@@ -110,6 +128,39 @@ export function App() {
 						<ImageUploader onSelect={editor.loadFile} hasImage loading={editor.loading} />
 					)}
 					<WatchModelSelector models={models} state={state} dispatch={dispatch} />
+
+					<section aria-label="編集" className="flex flex-col gap-6">
+						<FitModeSelector
+							value={state.fitMode}
+							onChange={(fitMode) => dispatch({ type: 'SET_FIT_MODE', fitMode })}
+							disabled={!editable}
+						/>
+						<ZoomSlider
+							value={getRelativeZoom(state, models)}
+							min={zoomRange.min}
+							max={zoomRange.max}
+							disabled={!editable}
+							onChange={(relative) => {
+								const scale = relativeToAbsoluteScale(state, models, relative);
+								if (scale !== null) dispatch({ type: 'SET_ZOOM', scale });
+							}}
+						/>
+						<BackgroundPicker
+							value={state.background.color}
+							onChange={(color) => dispatch({ type: 'SET_BACKGROUND', color })}
+							disabled={!editable}
+						/>
+						<EditorToolbar
+							disabled={!editable}
+							onFit={() => dispatch({ type: 'FIT_IMAGE' })}
+							onReset={() => dispatch({ type: 'RESET_TRANSFORM' })}
+							onMove={(delta) => dispatch({ type: 'PAN_BY', delta })}
+							step={{
+								x: frameOutput.width * MOVE_STEP_RATIO,
+								y: frameOutput.height * MOVE_STEP_RATIO,
+							}}
+						/>
+					</section>
 				</section>
 			</main>
 		</div>

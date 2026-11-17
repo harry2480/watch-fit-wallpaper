@@ -111,12 +111,14 @@ describe('App', () => {
 			.mockResolvedValueOnce(loaded(640, 480));
 		render(<App />);
 		selectFile('a.jpg');
-		expect(await screen.findByRole('status')).toHaveTextContent('画像を読み込んでいます');
+		expect(await screen.findByText('画像を読み込んでいます…')).toHaveAttribute('role', 'status');
 		expect(screen.getByRole('button', { name: '画像を選ぶ' })).toBeDisabled();
 		selectFile('b.jpg');
 		await screen.findByRole('img', { name: /表示プレビュー/ });
 		resolveFirst({ status: 'stale' });
-		await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+		await waitFor(() =>
+			expect(screen.queryByText('画像を読み込んでいます…')).not.toBeInTheDocument(),
+		);
 	});
 
 	it('最初の画像を読み込むと「別の画像を選ぶ」ボタンにフォーカスを移す', async () => {
