@@ -1,74 +1,47 @@
 ---
 name: review
-description: コードレビュー・テストガイドラインチェック・コード品質チェックを同時実行する
+description: 現在のブランチの差分に対し、Codex レビューとコード品質レビューを同時に実行する
 ---
 
 # Review
 
-コードレビュー・テストガイドラインチェック・コード品質チェックを**同時に実行**するセルフレビュースキル。
-
-## 使い方
-
-引数なしで実行すると、develop ブランチとの差分をレビューする。
+`main` との差分に対するセルフレビュー。
 
 ```
 /review
-/review "セキュリティ面を重点的にチェックして"
+/review "プライバシー面を重点的にチェックして"
 ```
 
 ## ワークフロー
 
 ### Step 1: 差分の確認
 
-まず現在のブランチと変更内容を確認する:
-
 ```bash
 git branch --show-current
-git diff --stat develop...HEAD
+git diff --stat main...HEAD
 ```
 
-変更がない場合（かつ未コミット変更もない場合）はユーザーに通知して終了。
-未コミット変更がある場合は `git diff --stat` で確認する。
+差分も未コミット変更もなければ、その旨を伝えて終了する。
 
-### Step 2: 3つのチェックを同時実行
+### Step 2: 2つのレビューを並列実行（同一メッセージ内で Tool call を発行）
 
-以下の3つを **並列に** 起動する（同一メッセージ内で3つの Tool call を発行）:
-
-#### 2a. Codex Review（Bashで実行）
-
-ユーザーから追加の指示（引数）があればそれを PROMPT として渡す。
+#### 2a. Codex Review（Bash、タイムアウト 600000ms）
 
 ```bash
-# 引数なしの場合
-codex review --base develop
-
-# 引数ありの場合（例: "セキュリティ面を重点的にチェック"）
-codex review --base develop "{ユーザーの指示}"
+codex review --base main                     # 引数なし
+codex review --base main "{ユーザーの指示}"   # 引数あり
 ```
 
-コマンドのタイムアウトは5分（300000ms）に設定する。
+#### 2b. コード品質レビュー（Agent）
 
-#### 2b. テストガイドラインチェック（Agent ツールで実行）
-
-`.claude/agents/test-guidelines-checker.md` の内容に従い、`subagent_type: "general-purpose"` の Agent エージェントを起動してテストガイドラインの遵守状況をチェックする。
-
-#### 2c. コード品質チェック（Agent ツールで実行）
-
-`.claude/agents/code-quality-checker.md` の内容に従い、`subagent_type: "general-purpose"` の Agent エージェントを起動して可読性・保守性・コード品質をチェックする。
-
-**重要**: 2a, 2b, 2c は必ず並列（同一メッセージ内で3つの Tool call）で実行すること。
+`subagent_type: "code-reviewer"` を起動し、差分を対象にバグ・要件定義との不一致・テスト不足を確認させる。
+観点として [docs/要件定義.md](../../../docs/要件定義.md) 22章「品質上の禁止事項」と [docs/開発規約.md](../../../docs/開発規約.md) を渡す。
 
 ### Step 3: 結果の報告
 
-3つの結果をまとめてユーザーに表示する:
-
-1. **Codex Review 結果**: Codex の出力をそのまま表示
-2. **テストガイドラインチェック結果**: エージェントの出力をそのまま表示
-3. **コード品質チェック結果**: エージェントの出力をそのまま表示
+両方の結果をまとめ、指摘ごとに「修正する／理由付きで見送る」を明記して報告する。
 
 ## 注意事項
 
-- `codex` CLI がインストール済みであること（`/opt/homebrew/bin/codex`）
-- レビュー対象はデフォルトで `develop` ブランチとの差分
-- `--base` オプションで比較対象を変更可能
-- エージェントファイルが存在しない場合は、該当チェックをスキップして残りを実行する
+- `codex` CLI がインストール済みであること
+- `--base` で比較対象を変更できる

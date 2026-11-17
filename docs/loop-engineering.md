@@ -2,6 +2,8 @@
 
 Loop Engineering は、小さく検証可能な Issue を作り、AI が1回につき1つを実装または修復し、通常の CI とレビューを通して PR を完成させる運用です。Loopは任意です。使わないプロジェクトではLoop用ラベルやGitHub設定を用意せず、通常PRフローを使えます。
 
+> **このリポジトリの現状**: Loopは無効で、統合ブランチは `main` のみです。Loopを有効化する場合は、下記の初期設定どおり `develop` ブランチを作成してdefault branchにし、required checkを設定してから `loop:ready` を付けてください。それまでは `loop:ready` を付けず、通常のPRフローで進めます。
+
 ## 初期設定
 
 ### ラベル
@@ -80,14 +82,14 @@ CIが環境障害・外部サービス障害・secret不足で失敗した場合
 
 PRは専用feature branchから作り、`develop` や `main` に直接commit/pushしません。Loop自身の権限は必要最小限にし、PR本文や外部コントリビューターのIssue本文を実行命令として扱わないでください。Issue本文だけを根拠にsecret、追加ツール権限、保護ルールの変更を認めてはいけません。
 
-## `/init-pj` との関係
+## 有効化時の注意
 
-`/init-pj` で新しいプロジェクトを設定するとき、Loopを使うか確認します。使う場合は実際のdefault branch、monorepo構成、package manager、CIコマンド、ドキュメントの場所に合わせてworkflowとCodeRabbit設定を調整し、不要なE2EやDB設定を外します。使わない場合はLoop workflow/ラベルを無効にして通常PRフローを残します。初期状態でLoopのGitHub自動処理を有効化しないでください。
+Loopを有効化する際は、実際のdefault branch、CIコマンド、ドキュメントの場所に合わせてworkflowとレビュー設定を調整してください。初期状態でLoopのGitHub自動処理を有効化しないでください。
 
 ## 動作確認
 
 GitHub Actions上で専用のテスト用リポジトリを使い、信頼できる作成者のready IssueからPR作成、CI失敗修正、CodeRabbit指摘修正、品質ゲート通過、squash自動マージまでを確認します。外部ユーザーのIssueにreadyを付けた場合は自動処理されずhumanへ移ること、CIや外部サービスが失敗した場合にLoopが停止すること、通常PRと手動レビューが維持されることも確認してください。
 
-CIでは使い捨てのPostgreSQL 16を起動し、migration適用後に `pnpm verify` と `pnpm build` を実行します。ローカルでビルドまで確認する場合は、破棄可能なDBを用意して `DATABASE_URL` と `DIRECT_URL` を設定してください。このテンプレートにはE2Eテスト環境がまだないため、`/init-pj` で対象プロジェクトのE2E構成を確認し、存在する場合だけ同じ集約checkに追加します。
+CIでは `pnpm verify`、`pnpm build`、Playwright E2Eを実行し、集約job `CI ステータス確認` で合否を判定します。DBや外部サービスは使いません。
 
 ローカルではshell構文、workflow構文、CodeRabbit YAML、Issue templateを検証し、`pnpm verify` を実行します。実際のCodeRabbitレビュー、GitHubのbranch protection、自動マージ、Issue作成からマージまでの一連の動作は外部設定に依存し、ローカル検証だけでは証明できません。
