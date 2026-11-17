@@ -9,9 +9,11 @@ import {
 	zoomTransformAt,
 } from './constraints';
 import {
+	baseScale,
 	centeredTransform,
 	type FitMode,
 	type ImageTransform,
+	isValidSize,
 	type Point,
 	type Size,
 } from './geometry';
@@ -76,6 +78,39 @@ export function getOutputSize(state: EditorState, models: readonly WatchModel[])
 	return model ? { width: model.widthPx, height: model.heightPx } : null;
 }
 
+/**
+ * プレビュー表示に使う出力サイズ。出力不可（不正なカスタム解像度）の間は、
+ * 構図の基準になっている直前の有効サイズで表示を続ける。
+ */
+export function getPreviewOutputSize(
+	state: EditorState,
+	models: readonly WatchModel[],
+): Size | null {
+	return getOutputSize(state, models) ?? state.transformOutput;
+}
+
+/** スライダー表示用の相対倍率（現在モードの基準倍率を 1 とする）。画像が無ければ null */
+export function getRelativeZoom(state: EditorState, models: readonly WatchModel[]): number | null {
+	const output = getPreviewOutputSize(state, models);
+	if (!state.image || !output) {
+		return null;
+	}
+	return state.transform.scale / baseScale(state.fitMode, state.image, output);
+}
+
+/** 相対倍率を SET_ZOOM に渡す絶対倍率に変換する。画像が無ければ null */
+export function relativeToAbsoluteScale(
+	state: EditorState,
+	models: readonly WatchModel[],
+	relative: number,
+): number | null {
+	const output = getPreviewOutputSize(state, models);
+	if (!state.image || !output) {
+		return null;
+	}
+	return relative * baseScale(state.fitMode, state.image, output);
+}
+
 /** 画像があり、出力サイズが有効なときだけ保存できる */
 export function canExport(state: EditorState, models: readonly WatchModel[]): boolean {
 	return state.image !== null && getOutputSize(state, models) !== null;
@@ -131,10 +166,18 @@ function changeOutput(next: EditorState, models: readonly WatchModel[]): EditorS
 	return { ...next, transform, transformOutput: nextOutput };
 }
 
+/**
+ * モデル一覧を束縛した reducer を作る。
+ * UI ではモジュールのトップレベルで 1 回だけ作るか useMemo で固定すること。
+ */
 export function createEditorReducer(models: readonly WatchModel[]) {
 	return function editorReducer(state: EditorState, action: EditorAction): EditorState {
 		switch (action.type) {
 			case 'LOAD_IMAGE': {
+				// デコード結果は外部からの値なので、不正なサイズは例外にせず無視する
+				if (!isValidSize(action.image)) {
+					return state;
+				}
 				const next = { ...state, image: action.image };
 				const output = getOutputSize(next, models);
 				return output
@@ -146,12 +189,22 @@ export function createEditorReducer(models: readonly WatchModel[]) {
 					: { ...next, transform: IDENTITY_TRANSFORM, transformOutput: null };
 			}
 			case 'SELECT_MODEL': {
-				if (action.modelId !== CUSTOM_MODEL_ID && !findWatchModel(models, action.modelId)) {
+				if (
+					action.modelId === state.modelId ||
+					(action.modelId !== CUSTOM_MODEL_ID && !findWatchModel(models, action.modelId))
+				) {
 					return state;
 				}
 				return changeOutput({ ...state, modelId: action.modelId }, models);
 			}
 			case 'SET_CUSTOM_RESOLUTION':
+				if (
+					state.modelId === CUSTOM_MODEL_ID &&
+					Object.is(state.customResolution.width, action.width) &&
+					Object.is(state.customResolution.height, action.height)
+				) {
+					return state;
+				}
 				return changeOutput(
 					{
 						...state,
