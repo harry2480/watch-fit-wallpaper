@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { buildExifSegment, insertExif } from '../fixtures/exif';
-import { makeQuadrantJpeg, makeQuadrantPng, near, previewColorAt } from './helpers';
+import { makeQuadrantJpeg, makeQuadrantPng, near, previewBox, previewColorAt } from './helpers';
 
 function pngSize(bytes: Buffer): [number, number] {
 	return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
@@ -20,12 +20,6 @@ function jpegSize(bytes: Buffer): [number, number] {
 	throw new Error('SOF が見つかりません');
 }
 
-async function previewBox(page: Page) {
-	const box = await page.getByRole('img', { name: /表示プレビュー/ }).boundingBox();
-	if (!box) throw new Error('プレビューが見つかりません');
-	return box;
-}
-
 test('要件定義 18.4 の一連の操作で、PNG と JPEG を正しい解像度で保存できる', async ({ page }) => {
 	// 1. サイトを開く
 	await page.goto('./');
@@ -40,9 +34,23 @@ test('要件定義 18.4 の一連の操作で、PNG と JPEG を正しい解像�
 	await page.getByLabel('シリーズ').selectOption('Apple Watch SE 3');
 	await page.getByLabel('ケースサイズ').selectOption('se3-40mm');
 	await expect(page.getByText('保存サイズ: 324 × 394 px')).toBeVisible();
-	// 4. Cover に切り替える（初期値）
+	// 4. Cover に切り替える（初期値が Cover なので、いったん Contain にしてから戻す）
+	// モードを切り替えても構図は中央へ戻らず、実倍率も維持される（要件定義 6.4）
+	const sample = await previewColorAt(page, 0.6, 0.25);
+	await page.getByRole('radio', { name: 'Contain' }).check({ force: true });
+	await expect(page.getByRole('radio', { name: 'Contain' })).toBeChecked();
 	await page.getByRole('radio', { name: 'Cover' }).check({ force: true });
+	await expect.poll(() => previewColorAt(page, 0.6, 0.25)).toEqual(sample);
 	await expect(page.getByRole('radio', { name: 'Cover' })).toBeChecked();
+	// Cover では四隅まで画像で覆われ、背景色（黒）の余白が無い
+	for (const [x, y] of [
+		[0.01, 0.01],
+		[0.99, 0.01],
+		[0.01, 0.99],
+		[0.99, 0.99],
+	] as const) {
+		await expect.poll(() => previewColorAt(page, x, y)).not.toEqual([0, 0, 0]);
+	}
 	// 5. 画像をドラッグする（右へ動かすと左上の赤が広がる）
 	const box = await previewBox(page);
 	const before = await previewColorAt(page, 0.6, 0.25);
@@ -61,6 +69,9 @@ test('要件定義 18.4 の一連の操作で、PNG と JPEG を正しい解像�
 		.toBeGreaterThan(100);
 	// 7. Contain に切り替える
 	await page.getByRole('radio', { name: 'Contain' }).check({ force: true });
+	await expect(page.getByRole('radio', { name: 'Contain' })).toBeChecked();
+	// ズーム後の実倍率は維持されるため画面が画像で覆われたままになる。
+	// 背景色（手順 8）を確かめられるよう、Contain の基準倍率に戻して余白を出す
 	await page.getByRole('button', { name: 'フィット' }).click();
 	// 8. 背景色を変更する（Contain の余白に反映される）
 	await page.getByLabel('背景色').fill('#336699');
@@ -74,7 +85,8 @@ test('要件定義 18.4 の一連の操作で、PNG と JPEG を正しい解像�
 	// 11. 出力解像度を確認する
 	expect(pngSize(await readFile(await png.path()))).toEqual([324, 394]);
 	// 10. JPEG を保存する
-	await page.getByText('JPEG', { exact: true }).click();
+	await page.getByRole('radio', { name: 'JPEG' }).check({ force: true });
+	await expect(page.getByRole('radio', { name: 'JPEG' })).toBeChecked();
 	const [jpeg] = await Promise.all([
 		page.waitForEvent('download'),
 		page.getByRole('button', { name: '画像を保存' }).click(),

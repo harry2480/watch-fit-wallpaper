@@ -1,5 +1,12 @@
 import type { Page } from '@playwright/test';
 
+/** プレビュー Canvas の表示位置。見つからなければ失敗させる（操作を黙って飛ばさない） */
+export async function previewBox(page: Page) {
+	const box = await page.getByRole('img', { name: /表示プレビュー/ }).boundingBox();
+	if (!box) throw new Error('プレビューが見つかりません');
+	return box;
+}
+
 /** ブラウザ内の Canvas で 4 象限のテスト画像を作り、PNG のバイト列を返す */
 export async function makeQuadrantPng(page: Page, width: number, height: number): Promise<Buffer> {
 	const base64 = await page.evaluate(
