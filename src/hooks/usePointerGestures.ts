@@ -247,12 +247,13 @@ export function usePointerGestures(
 				gestureActive = false;
 				return;
 			}
-			gestureActive = true;
 			event.preventDefault();
 			if (pointers.size === 0) {
+				// 確定待ちのホイール操作を先に確定する（reset でフラグが消えないよう、フラグより前に行う）
 				flushWheel();
-				trackpad = { transform: live ?? ctx.transform };
+				trackpad = { transform: live ?? context()?.transform ?? ctx.transform };
 			}
+			gestureActive = true;
 		};
 		const onGestureChange = (event: Event) => {
 			if (!gestureActive) {

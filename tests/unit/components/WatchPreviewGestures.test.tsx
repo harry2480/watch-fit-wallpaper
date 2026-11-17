@@ -285,6 +285,23 @@ describe('Safari のジェスチャーイベント', () => {
 		expect(committed.scale).toBeCloseTo(transform.scale * 1.5, 9);
 	});
 
+	it('ホイール操作の直後にトラックパッドのピンチを始めても、ピンチでズームできる', () => {
+		vi.useFakeTimers();
+		try {
+			const { canvas, onTransformCommit } = setup();
+			wheel(canvas, -100, 60, 70);
+			gesture(canvas, 'gesturestart');
+			const afterWheel = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
+			expect(afterWheel).toBeDefined();
+			gesture(canvas, 'gesturechange', 2);
+			gesture(canvas, 'gestureend', 2);
+			const afterPinch = onTransformCommit.mock.calls[1]?.[0] as ImageTransform;
+			expect(afterPinch.scale).toBeCloseTo(afterWheel.scale * 2, 9);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('操作できないプレビューではページの標準動作を妨げない', () => {
 		render(
 			<WatchPreview
