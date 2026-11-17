@@ -188,18 +188,34 @@ export function WatchPreview({
 		},
 	});
 
-	// 親から別の構図・画像・出力サイズ・モードが届いたら、進行中の操作を確定せずに破棄する
+	// 親から別の構図・画像・出力サイズ・モードが届いたら、進行中の操作を確定せずに破棄する。
+	// 親が同じ値のオブジェクトを作り直しても破棄しないよう、値で比較する
 	const fitMode = interaction?.fitMode;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: 編集対象の変化をきっかけに破棄するため、値は参照しないが依存に含める
+	const { centerX, centerY, scale, rotationDeg } = transform;
+	const imageWidth = sourceSize?.width;
+	const imageHeight = sourceSize?.height;
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 編集対象の値の変化をきっかけに破棄するため、値は参照しないが依存に含める
 	useEffect(() => {
 		const committed = lastCommitRef.current;
 		lastCommitRef.current = null;
-		if (committed && sameTransform(committed, transform)) {
+		if (committed && sameTransform(committed, { centerX, centerY, scale, rotationDeg })) {
 			return;
 		}
 		cancel();
 		liveTransformRef.current = null;
-	}, [cancel, transform, source, sourceSize, output, fitMode]);
+	}, [
+		cancel,
+		centerX,
+		centerY,
+		scale,
+		rotationDeg,
+		source,
+		imageWidth,
+		imageHeight,
+		output.width,
+		output.height,
+		fitMode,
+	]);
 
 	const interactive = interaction !== undefined && source !== null;
 	return (

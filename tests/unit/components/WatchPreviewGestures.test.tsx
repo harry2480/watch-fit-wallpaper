@@ -10,9 +10,11 @@ const image = { width: 1000, height: 1000 };
 
 function setup(onTransformCommit = vi.fn()) {
 	const transform = centeredTransform('contain', image, output);
+	// 実アプリと同じく、画像リソースは同じオブジェクトを渡し続ける
+	const source = {} as CanvasImageSource;
 	const utils = render(
 		<WatchPreview
-			source={{} as CanvasImageSource}
+			source={source}
 			sourceSize={image}
 			output={output}
 			transform={transform}
@@ -39,7 +41,7 @@ function setup(onTransformCommit = vi.fn()) {
 	const rerender = (next: ImageTransform) =>
 		utils.rerender(
 			<WatchPreview
-				source={{} as CanvasImageSource}
+				source={source}
 				sourceSize={image}
 				output={output}
 				transform={next}
@@ -233,6 +235,17 @@ describe('WatchPreview の操作', () => {
 		for (const [committed] of onTransformCommit.mock.calls) {
 			expect((committed as ImageTransform).scale).toBe(transform.scale);
 		}
+	});
+
+	it('親が同じ値のオブジェクトを作り直して再描画しても、進行中の操作は続く', () => {
+		const { canvas, transform, onTransformCommit, rerender } = setup();
+		pointer('pointerdown', canvas, 1, 100, 100, true);
+		pointer('pointermove', canvas, 1, 105, 100);
+		rerender({ ...transform });
+		pointer('pointermove', canvas, 1, 110, 100);
+		pointer('pointerup', canvas, 1, 110, 100);
+		const committed = onTransformCommit.mock.calls[0]?.[0] as ImageTransform;
+		expect(committed.centerX).toBeCloseTo(transform.centerX + 20, 9);
 	});
 
 	it('確定待ちの間に親から別の構図が届いたら、古い操作を確定しない', () => {
