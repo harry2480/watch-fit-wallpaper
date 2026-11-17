@@ -10,7 +10,7 @@
 		"preview": "vite preview",
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
-		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
 		"test:unit": "vitest run",
 		"test:e2e": "playwright test",
 		"verify": "pnpm lint && pnpm typecheck && pnpm test:unit",
@@ -33,7 +33,6 @@
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"@biomejs/biome",
-			"esbuild",
 			"simple-git-hooks"
 		]
 	},
@@ -44,7 +43,7 @@
 		"@testing-library/jest-dom": "7.0.1",
 		"@testing-library/react": "16.3.3",
 		"@testing-library/user-event": "14.6.12",
-		"@types/node": "26.6.6",
+		"@types/node": "24.19.2",
 		"@types/react": "19.3.0",
 		"@types/react-dom": "19.3.0",
 		"@vitejs/plugin-react": "6.3.0",
@@ -55,5 +54,8 @@
 		"typescript": "7.0.2",
 		"vite": "8.3.8",
 		"vitest": "5.1.0"
+	},
+	"engines": {
+		"node": ">=22.22.2"
 	}
 }
