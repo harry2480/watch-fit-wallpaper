@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import type { FitMode } from '@/features/editor/geometry';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +15,7 @@ type FitModeSelectorProps = {
 
 /** 表示モードの切り替え（要件定義 6章）。切り替えても構図は中央へ戻さない */
 export function FitModeSelector({ value, onChange, disabled }: FitModeSelectorProps) {
+	const name = useId();
 	return (
 		<fieldset className="flex flex-col gap-2" disabled={disabled}>
 			<legend className="mb-2 text-sm font-medium">表示モード</legend>
@@ -22,20 +24,26 @@ export function FitModeSelector({ value, onChange, disabled }: FitModeSelectorPr
 					<label
 						key={option.value}
 						className={cn(
-							'flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-md border border-input px-3 py-2 text-sm transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50',
+							'relative flex min-h-11 cursor-pointer flex-col gap-0.5 rounded-md border border-input px-3 py-2 text-sm transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50',
 							value === option.value && 'border-primary bg-accent',
 						)}
 					>
 						<input
 							type="radio"
-							name="fit-mode"
+							name={name}
 							value={option.value}
+							aria-label={option.label}
+							aria-describedby={`${name}-${option.value}`}
 							checked={value === option.value}
 							onChange={() => onChange(option.value)}
 							className="sr-only"
 						/>
-						<span className="font-medium">{option.label}</span>
-						<span className="text-xs text-muted-foreground">{option.description}</span>
+						<span className="font-medium" aria-hidden="true">
+							{option.label}
+						</span>
+						<span id={`${name}-${option.value}`} className="text-xs text-muted-foreground">
+							{option.description}
+						</span>
 					</label>
 				))}
 			</div>

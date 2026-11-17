@@ -9,8 +9,12 @@ import { ZoomSlider } from '@/components/editor/ZoomSlider';
 import { Button } from '@/components/ui/button';
 import { GENERIC_CORNER_RADIUS_RATIO, WatchFrame } from '@/components/watch/WatchFrame';
 import { WatchModelSelector } from '@/components/watch/WatchModelSelector';
-import { baseScale, scaleRange } from '@/features/editor/geometry';
-import { getRelativeZoom, relativeToAbsoluteScale } from '@/features/editor/reducer';
+import {
+	canPan,
+	getRelativeZoom,
+	getZoomRange,
+	relativeToAbsoluteScale,
+} from '@/features/editor/reducer';
 import { findWatchModel } from '@/features/watch/models';
 import { useImageEditor } from '@/hooks/useImageEditor';
 
@@ -27,14 +31,17 @@ export function App() {
 	const { loadFile } = editor;
 	// 編集操作は、画像があり出力サイズが有効なときだけ行える（10.3）
 	const editable = hasImage && editor.canExport;
-	const zoomRange =
-		state.image && editor.previewOutput
-			? (() => {
-					const range = scaleRange(state.fitMode, state.image, editor.previewOutput);
-					const base = baseScale(state.fitMode, state.image, editor.previewOutput);
-					return { min: range.min / base, max: range.max / base };
-				})()
-			: { min: 1, max: 4 };
+	const zoomRange = getZoomRange(state, models);
+	const step = {
+		x: frameOutput.width * MOVE_STEP_RATIO,
+		y: frameOutput.height * MOVE_STEP_RATIO,
+	};
+	const canMove = {
+		up: canPan(state, models, { x: 0, y: -step.y }),
+		down: canPan(state, models, { x: 0, y: step.y }),
+		left: canPan(state, models, { x: -step.x, y: 0 }),
+		right: canPan(state, models, { x: step.x, y: 0 }),
+	};
 
 	// ページのどこにファイルを落としても、ブラウザがファイルを開いて編集内容を失わないようにし、
 	// 画像として読み込む（ドロップ領域が処理済みのものは除く）
@@ -155,10 +162,8 @@ export function App() {
 							onFit={() => dispatch({ type: 'FIT_IMAGE' })}
 							onReset={() => dispatch({ type: 'RESET_TRANSFORM' })}
 							onMove={(delta) => dispatch({ type: 'PAN_BY', delta })}
-							step={{
-								x: frameOutput.width * MOVE_STEP_RATIO,
-								y: frameOutput.height * MOVE_STEP_RATIO,
-							}}
+							step={step}
+							canMove={canMove}
 						/>
 					</section>
 				</section>

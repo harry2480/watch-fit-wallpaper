@@ -25,9 +25,10 @@ export function ZoomSlider({ value, min, max, onChange, disabled }: ZoomSliderPr
 		<div className="flex flex-col gap-2">
 			<div className="flex items-center justify-between">
 				<Label htmlFor={id}>ズーム</Label>
-				<output htmlFor={id} className="text-sm tabular-nums text-muted-foreground">
+				{/* 値は aria-valuetext で読み上げるため、表示用の数値は読み上げ対象から外す */}
+				<span aria-hidden="true" className="text-sm tabular-nums text-muted-foreground">
 					{percent}%
-				</output>
+				</span>
 			</div>
 			<input
 				id={id}

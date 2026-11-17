@@ -9,13 +9,22 @@ type EditorToolbarProps = {
 	onMove: (delta: Point) => void;
 	/** 1 回の移動量（Output px） */
 	step: Point;
+	/** 方向ごとに動かせるか（Cover で画像端に達した方向は無効にする） */
+	canMove: { up: boolean; down: boolean; left: boolean; right: boolean };
 	disabled: boolean;
 };
 
 /**
  * フィット・リセット（要件定義 6.5・6.6）と、ドラッグに依存しない位置調整（10.8）。
  */
-export function EditorToolbar({ onFit, onReset, onMove, step, disabled }: EditorToolbarProps) {
+export function EditorToolbar({
+	onFit,
+	onReset,
+	onMove,
+	step,
+	canMove,
+	disabled,
+}: EditorToolbarProps) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="grid grid-cols-2 gap-2">
@@ -34,6 +43,7 @@ export function EditorToolbar({ onFit, onReset, onMove, step, disabled }: Editor
 					variant="outline"
 					size="icon"
 					aria-label="上へ移動"
+					disabled={!canMove.up}
 					onClick={() => onMove({ x: 0, y: -step.y })}
 				>
 					<ArrowUp aria-hidden="true" />
@@ -43,6 +53,7 @@ export function EditorToolbar({ onFit, onReset, onMove, step, disabled }: Editor
 						variant="outline"
 						size="icon"
 						aria-label="左へ移動"
+						disabled={!canMove.left}
 						onClick={() => onMove({ x: -step.x, y: 0 })}
 					>
 						<ArrowLeft aria-hidden="true" />
@@ -52,6 +63,7 @@ export function EditorToolbar({ onFit, onReset, onMove, step, disabled }: Editor
 						variant="outline"
 						size="icon"
 						aria-label="右へ移動"
+						disabled={!canMove.right}
 						onClick={() => onMove({ x: step.x, y: 0 })}
 					>
 						<ArrowRight aria-hidden="true" />
@@ -61,6 +73,7 @@ export function EditorToolbar({ onFit, onReset, onMove, step, disabled }: Editor
 					variant="outline"
 					size="icon"
 					aria-label="下へ移動"
+					disabled={!canMove.down}
 					onClick={() => onMove({ x: 0, y: step.y })}
 				>
 					<ArrowDown aria-hidden="true" />

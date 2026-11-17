@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/app/App';
 
 const load = vi.fn();
@@ -25,13 +25,44 @@ function zoom() {
 	return screen.getByRole('slider', { name: 'ズーム' }) as HTMLInputElement;
 }
 
+/** プレビューの描画で画像中心へ移動した位置（Output 座標 × 描画倍率）を記録する */
+const translations: [number, number][] = [];
+
+function lastTranslation() {
+	return translations.at(-1);
+}
+
 describe('編集パネル', () => {
-	beforeEach(() => load.mockReset());
+	beforeEach(() => {
+		load.mockReset();
+		translations.length = 0;
+		vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+			this: HTMLCanvasElement,
+		) {
+			return {
+				canvas: this,
+				setTransform: vi.fn(),
+				fillRect: vi.fn(),
+				save: vi.fn(),
+				restore: vi.fn(),
+				scale: vi.fn(),
+				translate: (x: number, y: number) => translations.push([x, y]),
+				drawImage: vi.fn(),
+			} as unknown as CanvasRenderingContext2D;
+		} as never);
+		vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+			left: 0,
+			top: 0,
+			width: 211,
+			height: 257,
+		} as DOMRect);
+	});
+	afterEach(() => vi.restoreAllMocks());
 
 	it('画像未選択時はすべての編集操作が無効', () => {
 		render(<App />);
-		expect(screen.getByRole('radio', { name: /Cover/ })).toBeDisabled();
-		expect(screen.getByRole('radio', { name: /Contain/ })).toBeDisabled();
+		expect(screen.getByRole('radio', { name: 'Cover' })).toBeDisabled();
+		expect(screen.getByRole('radio', { name: 'Contain' })).toBeDisabled();
 		expect(zoom()).toBeDisabled();
 		expect(screen.getByLabelText('背景色')).toBeDisabled();
 		for (const name of ['フィット', 'リセット', '上へ移動', '下へ移動', '左へ移動', '右へ移動']) {
@@ -41,7 +72,7 @@ describe('編集パネル', () => {
 
 	it('画像を読み込むと操作でき、ズームは 100%（Cover の基準倍率）から始まる', async () => {
 		await loadImage();
-		expect(screen.getByRole('radio', { name: /Cover/ })).toBeChecked();
+		expect(screen.getByRole('radio', { name: 'Cover' })).toBeChecked();
 		expect(zoom()).toBeEnabled();
 		expect(zoom().value).toBe('100');
 		expect(zoom().min).toBe('100');
@@ -55,13 +86,13 @@ describe('編集パネル', () => {
 		expect(screen.getByText('250%')).toBeInTheDocument();
 		fireEvent.click(screen.getByRole('button', { name: 'リセット' }));
 		expect(zoom().value).toBe('100');
-		expect(screen.getByRole('radio', { name: /Cover/ })).toBeChecked();
+		expect(screen.getByRole('radio', { name: 'Cover' })).toBeChecked();
 	});
 
 	it('Contain に切り替えると実倍率は維持され、スライダーの表示が変わる', async () => {
 		await loadImage();
-		fireEvent.click(screen.getByRole('radio', { name: /Contain/ }));
-		expect(screen.getByRole('radio', { name: /Contain/ })).toBeChecked();
+		fireEvent.click(screen.getByRole('radio', { name: 'Contain' }));
+		expect(screen.getByRole('radio', { name: 'Contain' })).toBeChecked();
 		// 既定モデル（422×514）に 2000×1000: Cover=0.514、Contain=0.211 → 実倍率維持で約 244%
 		expect(screen.getByText('244%')).toBeInTheDocument();
 		expect(zoom().min).toBe('25');
@@ -78,15 +109,29 @@ describe('編集パネル', () => {
 		expect(screen.getByText('#ff8800')).toBeInTheDocument();
 	});
 
-	it('方向ボタンで位置を調整でき、ボタンにはアクセシブルな名前がある', async () => {
+	it('方向ボタンで移動すると描画位置が変わり、Cover で動かせない方向は無効になる', async () => {
 		await loadImage();
-		fireEvent.click(screen.getByRole('radio', { name: /Contain/ }));
-		fireEvent.click(screen.getByRole('button', { name: 'フィット' }));
-		const canvas = screen.getByRole('img', { name: /表示プレビュー/ });
-		expect(canvas).toBeInTheDocument();
-		// 移動してもフィットで中央・100% に戻ることで、移動が状態に反映されることを確認する
+		// 横長画像の Cover・100%: 縦は画面いっぱいで動かせず、横は動かせる
+		expect(screen.getByRole('button', { name: '上へ移動' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: '下へ移動' })).toBeDisabled();
+		await waitFor(() => expect(lastTranslation()).toBeDefined());
+		const before = lastTranslation() as [number, number];
 		fireEvent.click(screen.getByRole('button', { name: '右へ移動' }));
-		fireEvent.click(screen.getByRole('button', { name: '上へ移動' }));
-		expect(zoom().value).toBe('100');
+		await waitFor(() => expect(lastTranslation()?.[0]).toBeGreaterThan(before[0]));
+		expect(lastTranslation()?.[1]).toBeCloseTo(before[1], 9);
+	});
+
+	it('移動した構図は Contain に切り替えても中央へ戻らない', async () => {
+		await loadImage();
+		await waitFor(() => expect(lastTranslation()).toBeDefined());
+		const center = lastTranslation() as [number, number];
+		fireEvent.click(screen.getByRole('button', { name: '右へ移動' }));
+		fireEvent.click(screen.getByRole('button', { name: '右へ移動' }));
+		await waitFor(() => expect(lastTranslation()?.[0]).toBeGreaterThan(center[0]));
+		const moved = lastTranslation() as [number, number];
+		fireEvent.click(screen.getByRole('radio', { name: 'Contain' }));
+		await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+		expect(lastTranslation()?.[0]).toBeCloseTo(moved[0], 9);
+		expect(lastTranslation()?.[0]).not.toBeCloseTo(center[0], 3);
 	});
 });
