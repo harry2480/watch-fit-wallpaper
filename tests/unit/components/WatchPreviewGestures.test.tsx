@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode } from 'react';
+import { createRef, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { WatchPreview } from '@/components/editor/WatchPreview';
+import { WatchPreview, type WatchPreviewHandle } from '@/components/editor/WatchPreview';
 import { centeredTransform, type ImageTransform } from '@/features/editor/geometry';
 import { contentRect } from '@/hooks/usePointerGestures';
 
@@ -275,6 +275,56 @@ describe('WatchPreview の操作', () => {
 	it('プレビュー領域ではブラウザのタッチ操作を止める', () => {
 		const { canvas } = setup();
 		expect(canvas.className).toContain('touch-none');
+	});
+});
+
+describe('表示中の構図の取得（保存用）', () => {
+	it('確定待ちのホイール操作を確定し、表示中の構図を返す', () => {
+		vi.useFakeTimers();
+		try {
+			const ref = createRef<WatchPreviewHandle>();
+			const onTransformCommit = vi.fn();
+			const transform = centeredTransform('contain', image, output);
+			render(
+				<WatchPreview
+					ref={ref}
+					source={{} as CanvasImageSource}
+					sourceSize={image}
+					output={output}
+					transform={transform}
+					backgroundColor="#000000"
+					label="プレビュー"
+					interaction={{ fitMode: 'contain', onTransformCommit }}
+				/>,
+			);
+			const canvas = screen.getByRole('img', { name: 'プレビュー' });
+			canvas.getBoundingClientRect = () =>
+				({ left: 10, top: 20, width: 208, height: 248 }) as DOMRect;
+			wheel(canvas, -100, 60, 70);
+			const displayed = ref.current?.getDisplayedTransform() as ImageTransform;
+			expect(displayed.scale).toBeGreaterThan(transform.scale);
+			// 150ms 待たずに確定される
+			expect(onTransformCommit).toHaveBeenCalledWith(displayed);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('操作していなければ確定値を返す', () => {
+		const ref = createRef<WatchPreviewHandle>();
+		const transform = centeredTransform('cover', image, output);
+		render(
+			<WatchPreview
+				ref={ref}
+				source={null}
+				sourceSize={null}
+				output={output}
+				transform={transform}
+				backgroundColor="#000000"
+				label="読み取り専用"
+			/>,
+		);
+		expect(ref.current?.getDisplayedTransform()).toEqual(transform);
 	});
 });
 

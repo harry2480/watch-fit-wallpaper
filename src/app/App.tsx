@@ -1,20 +1,23 @@
 import { AlertCircle, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BackgroundPicker } from '@/components/editor/BackgroundPicker';
 import { EditorToolbar } from '@/components/editor/EditorToolbar';
 import { FitModeSelector } from '@/components/editor/FitModeSelector';
 import { ImageUploader } from '@/components/editor/ImageUploader';
-import { WatchPreview } from '@/components/editor/WatchPreview';
+import { WatchPreview, type WatchPreviewHandle } from '@/components/editor/WatchPreview';
 import { ZoomSlider } from '@/components/editor/ZoomSlider';
+import { ExportPanel } from '@/components/export/ExportPanel';
 import { Button } from '@/components/ui/button';
 import { GENERIC_CORNER_RADIUS_RATIO, WatchFrame } from '@/components/watch/WatchFrame';
 import { WatchModelSelector } from '@/components/watch/WatchModelSelector';
 import {
+	CUSTOM_MODEL_ID,
 	canPan,
 	getRelativeZoom,
 	getZoomRange,
 	relativeToAbsoluteScale,
 } from '@/features/editor/reducer';
+import { exportVersion } from '@/features/export/version';
 import { findWatchModel } from '@/features/watch/models';
 import { useImageEditor } from '@/hooks/useImageEditor';
 
@@ -29,6 +32,7 @@ export function App() {
 	const frameOutput = editor.previewOutput ?? editor.output ?? FALLBACK_OUTPUT;
 	const hasImage = decoded !== null && state.image !== null;
 	const { loadFile } = editor;
+	const previewRef = useRef<WatchPreviewHandle>(null);
 	// 編集操作は、画像があり出力サイズが有効なときだけ行える（10.3）
 	const editable = hasImage && editor.canExport;
 	const zoomRange = getZoomRange(state, models);
@@ -84,6 +88,7 @@ export function App() {
 								cornerRadiusRatio={model?.cornerRadiusRatio ?? GENERIC_CORNER_RADIUS_RATIO}
 							>
 								<WatchPreview
+									ref={previewRef}
 									source={decoded.source}
 									sourceSize={decoded}
 									output={frameOutput}
@@ -166,6 +171,46 @@ export function App() {
 							canMove={canMove}
 						/>
 					</section>
+
+					<ExportPanel
+						disabled={!editable}
+						editVersion={exportVersion({
+							imageId: editor.imageId,
+							transform: state.transform,
+							output: editor.output,
+							backgroundColor: state.background.color,
+							format: state.exportOptions.format,
+							quality: state.exportOptions.quality,
+						})}
+						fileId={
+							state.modelId === CUSTOM_MODEL_ID && editor.output
+								? `custom-${editor.output.width}x${editor.output.height}`
+								: state.modelId
+						}
+						format={state.exportOptions.format}
+						quality={state.exportOptions.quality}
+						onFormatChange={(format, quality) =>
+							dispatch({ type: 'SET_EXPORT_FORMAT', format, quality })
+						}
+						getSnapshot={() => {
+							if (!decoded || !editor.output || !state.image) return null;
+							// 確定前の操作も含めて、表示中の構図で出力する（9.4）
+							const transform = previewRef.current?.getDisplayedTransform() ?? state.transform;
+							const snapshot = {
+								source: decoded.source,
+								sourceSize: state.image,
+								output: editor.output,
+								transform,
+								backgroundColor: state.background.color,
+								format: state.exportOptions.format,
+								quality: state.exportOptions.quality,
+							};
+							return {
+								snapshot,
+								version: exportVersion({ ...snapshot, imageId: editor.imageId }),
+							};
+						}}
+					/>
 				</section>
 			</main>
 		</div>

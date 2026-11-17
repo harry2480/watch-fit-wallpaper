@@ -1,10 +1,27 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+	type Ref,
+	useCallback,
+	useEffect,
+	useImperativeHandle,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from 'react';
 import type { FitMode, ImageTransform, Size } from '@/features/editor/geometry';
 import { prepareCanvas, previewRenderScale, renderImage } from '@/features/editor/renderer';
 import { usePointerGestures } from '@/hooks/usePointerGestures';
 import { cn } from '@/lib/utils';
 
+export type WatchPreviewHandle = {
+	/**
+	 * 表示中の構図を返す。確定待ちのホイール操作は確定し、指で操作中ならその時点の構図を返す。
+	 * 保存時に、プレビューと出力の構図を一致させるために使う（要件定義 9.4）。
+	 */
+	getDisplayedTransform: () => ImageTransform;
+};
+
 type WatchPreviewProps = {
+	ref?: Ref<WatchPreviewHandle>;
 	source: CanvasImageSource | null;
 	sourceSize: Size | null;
 	output: Size;
@@ -34,6 +51,7 @@ export function WatchPreview({
 	backgroundColor,
 	label,
 	interaction,
+	ref,
 }: WatchPreviewProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const [displayWidth, setDisplayWidth] = useState(0);
@@ -147,7 +165,7 @@ export function WatchPreview({
 
 	const interactionRef = useRef(interaction);
 	interactionRef.current = interaction;
-	const { cancel } = usePointerGestures(canvasRef, {
+	const { cancel, flush } = usePointerGestures(canvasRef, {
 		getContext: () => {
 			const current = interactionRef.current;
 			const state = drawStateRef.current;
@@ -187,6 +205,17 @@ export function WatchPreview({
 			});
 		},
 	});
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			getDisplayedTransform: () => {
+				flush();
+				return liveTransformRef.current ?? drawStateRef.current.transform;
+			},
+		}),
+		[flush],
+	);
 
 	// 親から別の構図・画像・出力サイズ・モードが届いたら、進行中の操作を確定せずに破棄する。
 	// 親が同じ値のオブジェクトを作り直しても破棄しないよう、値で比較する

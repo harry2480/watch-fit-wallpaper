@@ -19,6 +19,8 @@ type ImageLoader = ReturnType<typeof createLatestImageLoader>;
 export function useImageEditor(createLoader: () => ImageLoader = createLatestImageLoader) {
 	const [state, dispatch] = useReducer(editorReducer, WATCH_MODELS, createInitialEditorState);
 	const [decoded, setDecoded] = useState<DecodedImage | null>(null);
+	/** 読み込んだ画像ごとに増える識別子（同じ寸法の別画像を区別する） */
+	const [imageId, setImageId] = useState(0);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const loaderRef = useRef<ImageLoader | null>(null);
@@ -56,6 +58,7 @@ export function useImageEditor(createLoader: () => ImageLoader = createLatestIma
 			return;
 		}
 		setDecoded(result.image);
+		setImageId((id) => id + 1);
 		setError(null);
 		dispatch({
 			type: 'LOAD_IMAGE',
@@ -74,6 +77,7 @@ export function useImageEditor(createLoader: () => ImageLoader = createLatestIma
 		dispatch,
 		models: WATCH_MODELS,
 		decoded,
+		imageId,
 		loading,
 		error,
 		loadFile,
