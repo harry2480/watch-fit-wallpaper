@@ -1,10 +1,5 @@
+import { WATCH_MODEL_DATA } from './model-data';
 import { type WatchModel, watchModelListSchema } from './schema';
-
-/**
- * 登録済みの Apple Watch モデル。
- * 解像度は確認元（sourceUrl）と確認日（verifiedAt）を記録したものだけを登録する（要件定義 4.3）。
- */
-const WATCH_MODEL_DATA: readonly WatchModel[] = [];
 
 /** モデル一覧を検証して返す。不正な定義が混ざっていれば例外にする（実装ミスの検出） */
 export function loadWatchModels(data: readonly unknown[]): WatchModel[] {
